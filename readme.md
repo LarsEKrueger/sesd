@@ -21,6 +21,11 @@ The following features (mostly based on Marps's features) are not in the scope:
 * Leo's extensions for right recursive grammars.
 * Aycock, Horspool's extensions for better performance.
 
+While Marpa provides a much better parser, it does not provide the
+synchronisation between parser and editor buffer. It might be possible to add
+that on top of Marpa and will be considered as a future direction once the
+basic proof-of-concept has been implemented.
+
 A small editor (text mode only) will be added to demonstrate these features.
 
 ## How to build this library
