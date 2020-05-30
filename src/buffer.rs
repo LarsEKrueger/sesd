@@ -101,6 +101,11 @@ impl<T> Buffer<T> {
         self.tokens.insert(self.cursor, t);
         self.cursor += 1;
     }
+
+    /// Delete tokens at the cursor
+    pub fn delete(&mut self, n: usize) {
+        self.tokens.drain(self.cursor..(self.cursor + n));
+    }
 }
 
 impl<T> Buffer<T>
@@ -171,4 +176,21 @@ mod tests {
         assert_eq!(buffer.cursor, 5);
         assert_eq!(buffer.tokens, &[3, 1, 8, 7, 6, 4, 5]);
     }
+
+    #[test]
+    fn delete() {
+        let mut buffer = Buffer::<u32>::new();
+        buffer.enter_slice(&[3, 1, 4, 1, 5]);
+        assert_eq!(buffer.tokens.len(), 5);
+        assert_eq!(buffer.cursor, 5);
+
+        buffer.move_start();
+        buffer.move_forward(2);
+        assert_eq!(buffer.cursor, 2);
+
+        buffer.delete(2);
+        assert_eq!(buffer.cursor, 2);
+        assert_eq!(buffer.tokens, &[3, 1, 5]);
+    }
+
 }
