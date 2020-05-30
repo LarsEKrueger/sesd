@@ -22,25 +22,6 @@
     SOFTWARE.
 */
 
-//! SESD public API
+//! Parser to work on Buffer
 
-mod buffer;
-mod grammar;
-mod parser;
-
-use buffer::Buffer;
-use parser::Parser;
-
-/// Editor Block with Synchronous Parsing
-pub struct SyncBlock<T> {
-    buffer: Buffer<T>,
-    // parser: Parser<T>,
-}
-
-impl<T> SyncBlock<T> {
-    pub fn new() -> Self {
-        Self {
-            buffer: Buffer::new(),
-        }
-    }
-}
+pub struct Parser {}
