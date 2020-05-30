@@ -1,0 +1,25 @@
+@startuml
+
+title Component Diagram
+
+component Buffer
+component Grammar
+component Parser
+component Renderer
+
+interface Changed
+
+Buffer - Changed
+Changed )-- Parser
+
+interface Updated
+
+Grammar - Updated
+Updated )- Parser
+
+interface NewAst
+
+Parser - NewAst
+NewAst )- Renderer
+
+@enduml
