@@ -14,6 +14,7 @@ The library shall fulfil the following tasks:
   or asynchronously in a separate thread. Configuring this at compile time is sufficient.
 * Provide access to the parse tree of the current input.
 * Support for Marpa's *ruby slippers* parsing where the parser fills in missing data.
+* Support for rendering and editing the stream based on the grammar
 
 The following features (mostly based on Marps's features) are not in the scope:
 
