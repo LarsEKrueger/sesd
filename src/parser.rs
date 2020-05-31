@@ -24,4 +24,42 @@
 
 //! Parser to work on Buffer
 
-pub struct Parser {}
+use super::grammar::{CompiledGrammar, SymbolId};
+
+/// Dotted Rule from Earley Algo
+struct DottedRule {
+    /// Index into rule table
+    rule: SymbolId,
+    /// Index into rhs of rule
+    dot: SymbolId,
+}
+
+/// Start and dot position in the input buffer
+///
+/// Both indices are usize as to not limit the length of the input buffer.
+///
+/// TODO: Limit the size of the input buffer.
+struct StartDot {
+    start: usize,
+    dot: usize,
+}
+
+/// Incrementally parse the input buffer.
+pub struct Parser<T> {
+    grammar: CompiledGrammar<T>,
+
+    /// Parsing chart.
+    ///
+    /// Outer dimension corresponds to buffer index. Inner dimensions are the possible rules that
+    /// apply at this buffer index.
+    chart: Vec<Vec<(DottedRule, StartDot)>>,
+}
+
+impl<T> Parser<T> {
+    pub fn new(grammar: CompiledGrammar<T>) -> Self {
+        Self {
+            grammar,
+            chart: Vec::new(),
+        }
+    }
+}
