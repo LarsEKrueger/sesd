@@ -96,10 +96,20 @@ pub struct CompiledGrammar<T> {
     /// non-terminal. Otherwise it's a terminal.
     ///
     /// TODO: Flatten this.
-    rules: Vec<(SymbolId, Vec<SymbolId>)>,
+    pub rules: Vec<(SymbolId, Vec<SymbolId>)>,
 
     /// Index of start symbol
-    start: SymbolId,
+    pub start: SymbolId,
+}
+
+/// Decode the rule indices into symbol index and terminal
+pub enum CompiledSymbol<T> {
+    /// Dot was at the end of the rule
+    None,
+    /// Dot was on a nonterminal symbol
+    NonTerminal(SymbolId),
+    /// Dot was on a terminal
+    Terminal(T),
 }
 
 fn update_symbol(
@@ -170,6 +180,7 @@ where
             if r.1.len() >= (MAX_SYMBOL_ID as usize) {
                 return Err(Error::TooLarge);
             }
+            // TODO: Reject if left recursive rule
             for s in r.1.iter() {
                 match s {
                     Symbol::Terminal(t) => {
@@ -253,6 +264,35 @@ where
             rules,
             start,
         })
+    }
+}
+
+impl<T> CompiledGrammar<T>
+where
+    T: Clone,
+{
+    pub fn rule_count(&self) -> usize {
+        self.rules.len()
+    }
+
+    pub fn is_start_rule(&self, i: usize) -> bool {
+        self.rules[i].0 == self.start
+    }
+
+    /// Return symbol after the dot or None if dot is at the end
+    pub fn dotted_symbol(&self, rule_index: SymbolId, dot_index: SymbolId) -> CompiledSymbol<T> {
+        let dot_index = dot_index as usize;
+        let rule = &self.rules[rule_index as usize];
+        if dot_index < rule.1.len() {
+            let sym = rule.1[dot_index];
+            if (sym as usize) < self.nonterminal_table.len() {
+                return CompiledSymbol::NonTerminal(sym);
+            } else {
+                let t_ind = (sym as usize) - self.nonterminal_table.len();
+                return CompiledSymbol::Terminal(self.terminal_table[t_ind].clone());
+            }
+        }
+        CompiledSymbol::None
     }
 }
 
