@@ -192,5 +192,4 @@ mod tests {
         assert_eq!(buffer.cursor, 2);
         assert_eq!(buffer.tokens, &[3, 1, 5]);
     }
-
 }

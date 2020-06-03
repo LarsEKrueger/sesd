@@ -37,6 +37,7 @@ pub enum Error {
 type Result<T> = std::result::Result<T, Error>;
 
 /// Dotted Rule from Earley Algo
+#[derive(PartialEq, Debug)]
 struct DottedRule {
     /// Index into rule table
     rule: SymbolId,
@@ -49,10 +50,14 @@ struct DottedRule {
 /// Both indices are usize as to not limit the length of the input buffer.
 ///
 /// TODO: Limit the size of the input buffer.
+#[derive(PartialEq, Debug)]
 struct StartDot {
     start: usize,
     dot: usize,
 }
+
+type ChartEntry = (DottedRule, StartDot);
+type StateList = Vec<ChartEntry>;
 
 /// Incrementally parse the input buffer.
 pub struct Parser<T> {
@@ -61,18 +66,22 @@ pub struct Parser<T> {
     /// Parsing chart.
     ///
     /// Outer dimension index corresponds to buffer index. Inner dimensions are the possible rules that
-    /// apply at this buffer index. In particular, chart[i] contain the rules that apply after
-    /// buffer[i] has been processed.
-    chart: Vec<Vec<(DottedRule, StartDot)>>,
+    /// apply at this buffer index.
+    ///
+    /// chart[0] contains the rules that derive directly or indirectly from the start symbol. In
+    /// general, chart[i+1] contain the rules that apply after buffer[i] has been processed.
+    ///
+    /// TODO: Flatten this array
+    chart: Vec<StateList>,
 
     /// Number of buffer entries (from the beginning) where the parse is valid.
     ///
-    /// This value will be decreased when the buffer is changed and increased when the parser is
+    /// This value might be decreased when the buffer is changed and increased when the parser is
     /// updated.
+    ///
+    /// The value is to interpreted as the index into the chart from which the scanner reads to
+    /// check if the current token matches.
     valid_entries: usize,
-
-    /// Set of rules that derive from the start symbol.
-    start_set: Vec<(DottedRule, StartDot)>,
 }
 
 impl DottedRule {
@@ -80,6 +89,13 @@ impl DottedRule {
         Self {
             rule: rule_id as SymbolId,
             dot: 0,
+        }
+    }
+
+    fn advance_dot(&self) -> Self {
+        Self {
+            rule: self.rule,
+            dot: self.dot + 1,
         }
     }
 }
@@ -91,30 +107,89 @@ impl StartDot {
             dot: index,
         }
     }
+
+    fn advance_dot(&self) -> Self {
+        Self {
+            start: self.start,
+            dot: self.dot + 1,
+        }
+    }
 }
 
-impl<T> Parser<T> 
-where T: Clone
+/// Result of parser update.
+#[derive(PartialEq, Debug)]
+pub enum Verdict {
+    /// Need more input to decide
+    More,
+
+    /// At least one rule of the start symbol has been completed
+    Accept,
+
+    /// There are no terminals for the next update to match. Input has been rejected.
+    Reject,
+}
+
+fn add_to_state_list(state_list: &mut StateList, entry: ChartEntry) {
+    for e in state_list.iter() {
+        if *e == entry {
+            return;
+        }
+    }
+    state_list.push(entry);
+}
+
+fn predict<T>(
+    state_list: &mut StateList,
+    symbol: SymbolId,
+    dot_buffer: usize,
+    grammar: &CompiledGrammar<T>,
+) where
+    T: Clone,
+{
+    for i in 0..grammar.rule_count() {
+        if grammar.lhs_is(i, symbol) {
+            let new_entry = (DottedRule::new(i), StartDot::new(dot_buffer));
+            add_to_state_list(state_list, new_entry);
+        }
+    }
+}
+
+impl<T> Parser<T>
+where
+    T: Clone + PartialEq,
 {
     pub fn new(grammar: CompiledGrammar<T>) -> Self {
-
-        // Populate the start set with the rules that have the start symbol as lhs.
-        // This will be automatically extended to all the indirect rules when the first token is
-        // processed. Since chart only grows, this will do useless checking every time the parser
-        // gets reset to an empty buffer. However, compared to the rest of the work to be done,
-        // this is negligible.
+        // Index 0 is special: It contains all the predictions of the start symbol. As the chart is
+        // only extended while parsing, chart entries before the current one aren't changed. Thus,
+        // the fully predicted chart[0] only needs to be generated once.
         let mut start_set = Vec::new();
+        // Fill in the rules that have the start symbol as lhs.
         for i in 0..grammar.rule_count() {
             if grammar.is_start_rule(i) {
-                start_set.push((DottedRule::new(i), StartDot::new(0)));
+                let new_entry = (DottedRule::new(i), StartDot::new(0));
+                add_to_state_list(&mut start_set, new_entry);
             }
         }
 
+        // The predictor for the start state is also special. As no empty rules are allowed, there
+        // is no need for *complete*.
+        // Since the state list will grow during this operation, the index needs to be checked every
+        // time.
+        let mut i = 0;
+        while i < start_set.len() {
+            let dr = &start_set[i].0;
+            if let CompiledSymbol::NonTerminal(nt) = grammar.dotted_symbol(dr.rule, dr.dot) {
+                predict(&mut start_set, nt, 0, &grammar);
+            }
+            i += 1;
+        }
+
+        let mut chart = Vec::new();
+        chart.push(start_set);
         Self {
             grammar,
-            chart: Vec::new(),
+            chart,
             valid_entries: 0,
-            start_set,
         }
     }
 
@@ -136,8 +211,8 @@ where T: Clone
     }
 
     /// Process one entry in the buffer. To support lexers/character class mappers, this function
-    /// does not take the buffer directly, but just one token. The caller respondible to ensure
-    /// the token is extracted correctly and consistently.
+    /// does not take the buffer directly, but just one token. The caller is respondible to ensure
+    /// the token extraction is deterministc.
     ///
     /// If the index is inside the already-parsed section, the valid part will be reset.
     ///
@@ -145,49 +220,208 @@ where T: Clone
     ///
     /// If the index is at the first unparsed position, the token will be processed.
     ///
-    /// The function returns true if the parse has been accepted.
-    pub fn update(&mut self, index: usize, token: T) -> Result<bool> {
+    /// When the terminal has been processed, the next entry is fully predicted. This allows *ruby
+    /// slippers* parsing when the user requests the acceptable tokens and inserts it into the
+    /// buffer before updating the parser.
+    ///
+    /// The function returns if the input is accepted, rejected or still undecided.
+    pub fn update(&mut self, index: usize, token: T) -> Result<Verdict> {
         self.buffer_changed(index);
         if index > self.valid_entries {
             return Err(Error::InvalidIndex);
         }
 
-        // Index is valid. Get the state list. Extend the chart if necessary.
-        if self.chart.len() <= index {
+        // Index is valid.
+        //
+        // The chart must have at least one entry more than the buffer. That means chart[index+1]
+        // needs to exist. If everything is correct so far and we're parsing the first time,
+        // `index + 1 == chart.len()`. If we're not parsing the first time, the chart may be
+        // longer.
+        assert!(index + 1 <= self.chart.len());
+        // Check if room for index+1 needs to be made.
+        if (index + 1) == self.chart.len() {
             // Should only need to add one state list
             self.chart.push(Vec::new());
-            assert!(index < self.chart.len());
+            assert!(index + 1 < self.chart.len());
         }
-        let state_list = &mut self.chart[index];
+        // Get the state list to write to in the scanner. We work on a new vector to simplify the
+        // access. This will change anyway when the chart is flattened.
+        let mut new_state_list = Vec::new();
+        self.chart[index + 1].clear();
 
-        // Remove stale entries.
-        state_list.clear();
+        // Get the state list to read from
+        let state_list = &self.chart[index];
 
-        // Get the state set to read from
-        let last_state_list = if index == 0 {
-            // First token ever, the previous state set is the start set.
-            &self.start_set
-        } else {
-            &self.chart[index - 1]
-        };
-
-        // Process the state list while extending it.
-        for last_state in last_state_list {
-            let dr = &last_state.0;
-            match self.grammar.dotted_symbol(dr.rule, dr.dot) {
-                CompiledSymbol::NonTerminal(nt) => {
-                    // Predict
-                }
-                CompiledSymbol::Terminal(t) => {
-                    // Scan
-
-                }
-                CompiledSymbol::None => {
-                    // Complete
+        // Perform *scan*.
+        //
+        // The invariant of chart is that chart[i] has been fully predicted and completed before
+        // update(i) is called. Thus, only *scan* remains to be done. The order of operations
+        // doesn't matter as *scan* will not change the chart[i].
+        let mut scanned = false;
+        for state in state_list {
+            let dr = &state.0;
+            if let CompiledSymbol::Terminal(t) = self.grammar.dotted_symbol(dr.rule, dr.dot) {
+                if t == token {
+                    // Successful, advance the dot and store in new_state
+                    let new_state = (dr.advance_dot(), state.1.advance_dot());
+                    add_to_state_list(&mut new_state_list, new_state);
+                    scanned = true;
                 }
             }
         }
 
-        Ok(false)
+        if !scanned {
+            return Ok(Verdict::Reject);
+        }
+
+        // Predict and complete the new state. This will usually grow the state list. Thus, indexed
+        // access is required.
+        let mut start_rule_completed = false;
+        let mut i = 0;
+        while i < new_state_list.len() {
+            let dr = &new_state_list[i].0;
+            match self.grammar.dotted_symbol(dr.rule, dr.dot) {
+                CompiledSymbol::NonTerminal(nt) => {
+                    predict(&mut new_state_list, nt, index + 1, &self.grammar)
+                }
+                CompiledSymbol::Terminal(_) => {
+                    // Can't do anything as we don't know the new token.
+                }
+                CompiledSymbol::Completed(completed) => {
+                    // Complete
+                    start_rule_completed =
+                        start_rule_completed | self.grammar.is_start_symbol(completed);
+                    let start = new_state_list[i].1.start;
+                    let dot = new_state_list[i].1.dot;
+                    assert_eq!( dot, index+1);
+                    // Check all the rules at *start* if the dot is at the completed symbol
+                    for rule in self.chart[start].iter() {
+                        let start_dr = &rule.0;
+                        if let CompiledSymbol::NonTerminal(maybe_completed) =
+                            self.grammar.dotted_symbol(start_dr.rule, start_dr.dot)
+                        {
+                            if maybe_completed == completed {
+                                let new_entry = (
+                                    start_dr.advance_dot(),
+                                    StartDot {
+                                        start: rule.1.start,
+                                        dot: index + 1,
+                                    },
+                                );
+                                add_to_state_list(&mut new_state_list, new_entry);
+                            }
+                        }
+                    }
+                }
+            }
+            i += 1;
+        }
+
+        self.chart[index + 1] = new_state_list;
+        self.valid_entries = index + 1;
+
+        Ok(if start_rule_completed {
+            Verdict::Accept
+        } else {
+            Verdict::More
+        })
+    }
+}
+
+impl<T> Parser<T>
+where
+    T: Clone + PartialEq + std::fmt::Display,
+{
+    pub fn print_chart(&self) {
+        for i in 0..=self.valid_entries {
+            println!("chart[{}]:", i);
+            for e in self.chart[i].iter() {
+                print!("  ");
+                self.grammar.print_dotted_rule(e.0.rule, e.0.dot);
+                println!(", [{}, {}]", e.1.start, e.1.dot);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use super::super::grammar::tests::define_grammar;
+
+    #[test]
+    fn seq_success() {
+        let grammar = define_grammar();
+        let compiled_grammar = grammar.compile().expect("compilation should have worked");
+
+        let mut parser = Parser::<char>::new(compiled_grammar);
+        let mut index = 0;
+        for (i, c) in "john called mary from denver".chars().enumerate() {
+            println!("\n");
+            parser.print_chart();
+            println!("{}, '{}'", i, c);
+            let res = parser.update(i, c);
+            parser.print_chart();
+            assert!(res.is_ok());
+            assert!(res.unwrap() != Verdict::Reject);
+            index = i;
+        }
+        println!("\n");
+        parser.print_chart();
+        println!("{}, ' '", index + 1);
+        let res = parser.update(index + 1, ' ');
+        parser.print_chart();
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), Verdict::Accept);
+    }
+
+    #[test]
+    fn seq_fail() {
+        let grammar = define_grammar();
+        let compiled_grammar = grammar.compile().expect("compilation should have worked");
+
+        let mut parser = Parser::<char>::new(compiled_grammar);
+        let mut index = 0;
+        for (i, c) in "john ".chars().enumerate() {
+            let res = parser.update(i, c);
+            assert!(res.is_ok());
+            assert_eq!(res.unwrap(), Verdict::More);
+            index = i;
+        }
+        let res = parser.update(index + 1, 'w');
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), Verdict::Reject);
+    }
+
+    #[test]
+    fn reset() {
+        let grammar = define_grammar();
+        let compiled_grammar = grammar.compile().expect("compilation should have worked");
+
+        let mut parser = Parser::<char>::new(compiled_grammar);
+
+        // Start as "john called denver"
+        for (i, c) in "john called denver".chars().enumerate() {
+            let res = parser.update(i, c);
+            assert!(res.is_ok());
+            assert!(res.unwrap() != Verdict::Reject);
+        }
+
+        // Reset to the beginning of "denver"
+        parser.buffer_changed(12);
+
+        // Complete the sentence
+        let mut index = 0;
+        for (i, c) in "mary from denver".chars().enumerate() {
+            index = i + 12;
+            let res = parser.update(index, c);
+            assert!(res.is_ok());
+            assert!(res.unwrap() != Verdict::Reject);
+        }
+
+        let res = parser.update(index + 1, ' ');
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), Verdict::Accept);
     }
 }

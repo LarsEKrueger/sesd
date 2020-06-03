@@ -104,8 +104,8 @@ pub struct CompiledGrammar<T> {
 
 /// Decode the rule indices into symbol index and terminal
 pub enum CompiledSymbol<T> {
-    /// Dot was at the end of the rule
-    None,
+    /// Dot was at the end of the rule. Return the LHS
+    Completed(SymbolId),
     /// Dot was on a nonterminal symbol
     NonTerminal(SymbolId),
     /// Dot was on a terminal
@@ -279,6 +279,14 @@ where
         self.rules[i].0 == self.start
     }
 
+    pub fn is_start_symbol(&self, sym: SymbolId) -> bool {
+        self.start == sym
+    }
+
+    pub fn lhs_is(&self, i: usize, sym: SymbolId) -> bool {
+        self.rules[i].0 == sym
+    }
+
     /// Return symbol after the dot or None if dot is at the end
     pub fn dotted_symbol(&self, rule_index: SymbolId, dot_index: SymbolId) -> CompiledSymbol<T> {
         let dot_index = dot_index as usize;
@@ -292,12 +300,38 @@ where
                 return CompiledSymbol::Terminal(self.terminal_table[t_ind].clone());
             }
         }
-        CompiledSymbol::None
+        CompiledSymbol::Completed(rule.0)
+    }
+}
+
+impl<T> CompiledGrammar<T>
+where
+    T: Clone + std::fmt::Display,
+{
+    pub fn print_dotted_rule(&self, rule_index: SymbolId, dot_index: SymbolId) {
+        let dot_index = dot_index as usize;
+        let rule = &self.rules[rule_index as usize];
+        print!("{} → ", self.nonterminal_table[rule.0 as usize]);
+        for i in 0..rule.1.len() {
+            if i == dot_index {
+                print!("• ");
+            }
+            let sym = rule.1[i];
+            if (sym as usize) < self.nonterminal_table.len() {
+                print!("{} ", self.nonterminal_table[sym as usize]);
+            } else {
+                let t_ind = (sym as usize) - self.nonterminal_table.len();
+                print!("'{}' ", self.terminal_table[t_ind]);
+            }
+        }
+        if dot_index == rule.1.len() {
+            print!("• ");
+        }
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
 
     /// Define the grammar from: https://www.cs.unm.edu/~luger/ai-final2/CH9_Dynamic%20Programming%20and%20the%20Earley%20Parser.pdf
@@ -314,7 +348,7 @@ mod tests {
     /// Noun → “denver”
     /// Verb → “called”
     /// Prep → “from”
-    fn define_grammar() -> Grammar<char> {
+    pub fn define_grammar() -> Grammar<char> {
         let mut grammar: Grammar<char> = Grammar::new();
 
         use Symbol::*;
