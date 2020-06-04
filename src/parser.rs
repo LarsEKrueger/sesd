@@ -45,6 +45,24 @@ type Result<T> = std::result::Result<T, Error>;
 type ChartEntry = (DottedRule, usize);
 type StateList = Vec<ChartEntry>;
 
+/// Entry in the parse tree.
+///
+/// The node of the tree are the chart entries. The edges are stored separately.
+struct CstEdge {
+    /// Index into StateList at the buffer index where the edge originates.
+    ///
+    /// This allows access to the start index and the symbol
+    from_state: SymbolId,
+
+    /// Index into StateList at the buffer index where the edge ends
+    to_state: SymbolId,
+
+    /// Buffer index where the target of the link is to be found
+    to_index: usize,
+}
+
+type CstList = Vec<CstEdge>;
+
 /// Incrementally parse the input buffer.
 pub struct Parser<T> {
     grammar: CompiledGrammar<T>,
@@ -59,6 +77,13 @@ pub struct Parser<T> {
     ///
     /// TODO: Flatten this array
     chart: Vec<StateList>,
+
+    /// Nodes of the parse tree.
+    ///
+    /// Uses the same indexing as chart.
+    ///
+    /// TODO: Flatten this array
+    cst: Vec<CstList>,
 
     /// Number of buffer entries (from the beginning) where the parse is valid.
     ///
@@ -83,13 +108,15 @@ pub enum Verdict {
     Reject,
 }
 
-fn add_to_state_list(state_list: &mut StateList, entry: ChartEntry) {
-    for e in state_list.iter() {
+fn add_to_state_list(state_list: &mut StateList, entry: ChartEntry) -> SymbolId {
+    for (i,e) in state_list.iter().enumerate() {
         if *e == entry {
-            return;
+            return i as SymbolId;
         }
     }
+    let res = state_list.len();
     state_list.push(entry);
+    (res as SymbolId)
 }
 
 fn predict<T>(
@@ -139,9 +166,12 @@ where
 
         let mut chart = Vec::new();
         chart.push(start_set);
+        let mut cst = Vec::new();
+        cst.push( Vec::new());
         Self {
             grammar,
             chart,
+            cst,
             valid_entries: 0,
         }
     }
@@ -196,6 +226,8 @@ where
             // Should only need to add one state list
             self.chart.push(Vec::new());
             assert!(index + 1 < self.chart.len());
+            self.cst.push( Vec::new());
+            assert_eq!(self.cst.len() , self.chart.len());
         }
         // Get the state list to write to in the scanner. We work on a new vector to simplify the
         // access. This will change anyway when the chart is flattened.
@@ -227,6 +259,8 @@ where
             return Ok(Verdict::Reject);
         }
 
+        let mut new_cst_list = Vec::new();
+
         // Predict and complete the new state. This will usually grow the state list. Thus, indexed
         // access is required.
         let mut start_rule_completed = false;
@@ -245,14 +279,22 @@ where
                         start_rule_completed | self.grammar.is_start_symbol(completed);
                     let start = new_state_list[i].1;
                     // Check all the rules at *start* if the dot is at the completed symbol
-                    for rule in self.chart[start].iter() {
+                    for (rule_index,rule) in self.chart[start].iter().enumerate() {
                         let start_dr = &rule.0;
                         if let CompiledSymbol::NonTerminal(maybe_completed) =
                             self.grammar.dotted_symbol(&start_dr)
                         {
                             if maybe_completed == completed {
+                                // Update the Earley chart
                                 let new_entry = (start_dr.advance_dot(), rule.1);
-                                add_to_state_list(&mut new_state_list, new_entry);
+                                let from_state = add_to_state_list(&mut new_state_list, new_entry);
+                                // Create the CST edge.
+                                let new_edge = CstEdge {
+                                    from_state,
+                                    to_state: (rule_index as SymbolId),
+                                    to_index: start,
+                                };
+                                new_cst_list.push( new_edge);
                             }
                         }
                     }
@@ -262,6 +304,7 @@ where
         }
 
         self.chart[index + 1] = new_state_list;
+        self.cst[index+1] = new_cst_list;
         self.valid_entries = index + 1;
 
         Ok(if start_rule_completed {
