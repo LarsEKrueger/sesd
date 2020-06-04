@@ -27,6 +27,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::Hash;
+use std::io::Write;
 
 use itertools::Itertools;
 
@@ -314,30 +315,36 @@ where
     }
 }
 
+
 impl<T> CompiledGrammar<T>
 where
     T: Clone + std::fmt::Display,
 {
-    pub fn print_dotted_rule(&self, dotted_rule: &DottedRule) {
+
+    pub fn write_dotted_rule(&self, writer:&mut dyn Write, dotted_rule: &DottedRule) {
         let rule_index = dotted_rule.rule as usize;
         let dot_index = dotted_rule.dot as usize;
         let rule = &self.rules[rule_index];
-        print!("{} → ", self.nonterminal_table[rule.0 as usize]);
+        write!(writer, "{} → ", self.nonterminal_table[rule.0 as usize]);
         for i in 0..rule.1.len() {
             if i == dot_index {
-                print!("• ");
+                write!(writer, "• ");
             }
             let sym = rule.1[i];
             if (sym as usize) < self.nonterminal_table.len() {
-                print!("{} ", self.nonterminal_table[sym as usize]);
+                write!(writer, " {} ", self.nonterminal_table[sym as usize]);
             } else {
                 let t_ind = (sym as usize) - self.nonterminal_table.len();
-                print!("'{}' ", self.terminal_table[t_ind]);
+                write!(writer," '{}' ", self.terminal_table[t_ind]);
             }
         }
         if dot_index == rule.1.len() {
-            print!("• ");
+            write!(writer, "• ");
         }
+    }
+
+    pub fn print_dotted_rule(&self, dotted_rule: &DottedRule) {
+        self.write_dotted_rule( &mut std::io::stdout(), dotted_rule);
     }
 }
 
