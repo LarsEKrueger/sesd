@@ -24,7 +24,7 @@
 
 //! Parser to work on Buffer
 
-use super::grammar::{CompiledGrammar, CompiledSymbol, SymbolId, DottedRule};
+use super::grammar::{CompiledGrammar, CompiledSymbol, DottedRule, SymbolId};
 
 /// Parser error codes
 #[derive(Debug)]
@@ -251,10 +251,7 @@ where
                             self.grammar.dotted_symbol(&start_dr)
                         {
                             if maybe_completed == completed {
-                                let new_entry = (
-                                    start_dr.advance_dot(),
-                                        rule.1,
-                                );
+                                let new_entry = (start_dr.advance_dot(), rule.1);
                                 add_to_state_list(&mut new_state_list, new_entry);
                             }
                         }
