@@ -287,12 +287,12 @@ where
                             if maybe_completed == completed {
                                 // Update the Earley chart
                                 let new_entry = (start_dr.advance_dot(), rule.1);
-                                let from_state = add_to_state_list(&mut new_state_list, new_entry);
+                                let to_state = add_to_state_list(&mut new_state_list, new_entry);
                                 // Create the CST edge.
                                 let new_edge = CstEdge {
-                                    from_state,
-                                    to_state: (rule_index as SymbolId),
-                                    to_index: start,
+                                    from_state: i as SymbolId,
+                                    to_state,
+                                    to_index: index+1,
                                 };
                                 new_cst_list.push( new_edge);
                             }
@@ -337,6 +337,8 @@ mod tests {
 
     use super::super::grammar::tests::define_grammar;
 
+    use std::io::Write;
+
     #[test]
     fn seq_success() {
         let grammar = define_grammar();
@@ -361,6 +363,24 @@ mod tests {
         parser.print_chart();
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), Verdict::Accept);
+
+        // Print the parse tree for dot
+        println!("\ndot:\tdigraph {{");
+        for (from_index,es) in  parser.cst.iter().enumerate() {
+            for e in es {
+                let dr_from = &(parser.chart[from_index][e.from_state as usize].0);
+                let dr_to = &(parser.chart[e.to_index][e.to_state as usize].0);
+
+                let mut line = "dot:\t\"".as_bytes().to_vec();
+                write!(&mut line, "({},{}): ", from_index, e.from_state);
+                parser.grammar.write_dotted_rule(&mut line, &dr_from);
+                write!( &mut line, "\" -> \"({},{}): ", e.to_index, e.to_state);
+                parser.grammar.write_dotted_rule(&mut line, &dr_to);
+                write!( &mut line, "\"\n");
+                std::io::stdout().write(&line);
+            }
+        }
+        println!("dot:\t}}");
     }
 
     #[test]
