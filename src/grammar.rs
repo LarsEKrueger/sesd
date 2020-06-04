@@ -112,6 +112,16 @@ pub enum CompiledSymbol<T> {
     Terminal(T),
 }
 
+/// Dotted Rule from Earley Algo
+#[derive(PartialEq, Debug)]
+pub struct DottedRule {
+    /// Index into rule table
+    rule: SymbolId,
+    /// Index into rhs of rule
+    dot: SymbolId,
+}
+
+
 fn update_symbol(
     map: &mut HashMap<String, (bool, usize)>,
     key: String,
@@ -288,9 +298,10 @@ where
     }
 
     /// Return symbol after the dot or None if dot is at the end
-    pub fn dotted_symbol(&self, rule_index: SymbolId, dot_index: SymbolId) -> CompiledSymbol<T> {
-        let dot_index = dot_index as usize;
-        let rule = &self.rules[rule_index as usize];
+    pub fn dotted_symbol(&self, dotted_rule:&DottedRule) -> CompiledSymbol<T> {
+        let rule_index = dotted_rule.rule as usize;
+            let dot_index = dotted_rule.dot as usize;
+        let rule = &self.rules[rule_index];
         if dot_index < rule.1.len() {
             let sym = rule.1[dot_index];
             if (sym as usize) < self.nonterminal_table.len() {
@@ -308,9 +319,10 @@ impl<T> CompiledGrammar<T>
 where
     T: Clone + std::fmt::Display,
 {
-    pub fn print_dotted_rule(&self, rule_index: SymbolId, dot_index: SymbolId) {
-        let dot_index = dot_index as usize;
-        let rule = &self.rules[rule_index as usize];
+    pub fn print_dotted_rule(&self, dotted_rule:&DottedRule) {
+        let rule_index = dotted_rule.rule as usize;
+            let dot_index = dotted_rule.dot as usize;
+        let rule = &self.rules[rule_index];
         print!("{} → ", self.nonterminal_table[rule.0 as usize]);
         for i in 0..rule.1.len() {
             if i == dot_index {
@@ -329,6 +341,23 @@ where
         }
     }
 }
+
+impl DottedRule {
+    pub fn new(rule_id: usize) -> Self {
+        Self {
+            rule: rule_id as SymbolId,
+            dot: 0,
+        }
+    }
+
+    pub fn advance_dot(&self) -> Self {
+        Self {
+            rule: self.rule,
+            dot: self.dot + 1,
+        }
+    }
+}
+
 
 #[cfg(test)]
 pub mod tests {

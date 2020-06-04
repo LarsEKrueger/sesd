@@ -24,7 +24,7 @@
 
 //! Parser to work on Buffer
 
-use super::grammar::{CompiledGrammar, CompiledSymbol, SymbolId};
+use super::grammar::{CompiledGrammar, CompiledSymbol, SymbolId, DottedRule};
 
 /// Parser error codes
 #[derive(Debug)]
@@ -36,27 +36,13 @@ pub enum Error {
 /// Type alias for Results with Errors
 type Result<T> = std::result::Result<T, Error>;
 
-/// Dotted Rule from Earley Algo
-#[derive(PartialEq, Debug)]
-struct DottedRule {
-    /// Index into rule table
-    rule: SymbolId,
-    /// Index into rhs of rule
-    dot: SymbolId,
-}
-
-/// Start and dot position in the input buffer
+/// Entry in the parsing chart. Dotted rule indicate next symbol to be parsed
+/// (terminal/non-terminal). Second field is start position in the input buffer.
 ///
-/// Both indices are usize as to not limit the length of the input buffer.
+/// Index is usize as to not limit the length of the input buffer.
 ///
 /// TODO: Limit the size of the input buffer.
-#[derive(PartialEq, Debug)]
-struct StartDot {
-    start: usize,
-    dot: usize,
-}
-
-type ChartEntry = (DottedRule, StartDot);
+type ChartEntry = (DottedRule, usize);
 type StateList = Vec<ChartEntry>;
 
 /// Incrementally parse the input buffer.
@@ -82,38 +68,6 @@ pub struct Parser<T> {
     /// The value is to interpreted as the index into the chart from which the scanner reads to
     /// check if the current token matches.
     valid_entries: usize,
-}
-
-impl DottedRule {
-    fn new(rule_id: usize) -> Self {
-        Self {
-            rule: rule_id as SymbolId,
-            dot: 0,
-        }
-    }
-
-    fn advance_dot(&self) -> Self {
-        Self {
-            rule: self.rule,
-            dot: self.dot + 1,
-        }
-    }
-}
-
-impl StartDot {
-    fn new(index: usize) -> Self {
-        Self {
-            start: index,
-            dot: index,
-        }
-    }
-
-    fn advance_dot(&self) -> Self {
-        Self {
-            start: self.start,
-            dot: self.dot + 1,
-        }
-    }
 }
 
 /// Result of parser update.
@@ -148,7 +102,7 @@ fn predict<T>(
 {
     for i in 0..grammar.rule_count() {
         if grammar.lhs_is(i, symbol) {
-            let new_entry = (DottedRule::new(i), StartDot::new(dot_buffer));
+            let new_entry = (DottedRule::new(i), dot_buffer);
             add_to_state_list(state_list, new_entry);
         }
     }
@@ -166,7 +120,7 @@ where
         // Fill in the rules that have the start symbol as lhs.
         for i in 0..grammar.rule_count() {
             if grammar.is_start_rule(i) {
-                let new_entry = (DottedRule::new(i), StartDot::new(0));
+                let new_entry = (DottedRule::new(i), 0);
                 add_to_state_list(&mut start_set, new_entry);
             }
         }
@@ -177,8 +131,7 @@ where
         // time.
         let mut i = 0;
         while i < start_set.len() {
-            let dr = &start_set[i].0;
-            if let CompiledSymbol::NonTerminal(nt) = grammar.dotted_symbol(dr.rule, dr.dot) {
+            if let CompiledSymbol::NonTerminal(nt) = grammar.dotted_symbol(&start_set[i].0) {
                 predict(&mut start_set, nt, 0, &grammar);
             }
             i += 1;
@@ -260,10 +213,10 @@ where
         let mut scanned = false;
         for state in state_list {
             let dr = &state.0;
-            if let CompiledSymbol::Terminal(t) = self.grammar.dotted_symbol(dr.rule, dr.dot) {
+            if let CompiledSymbol::Terminal(t) = self.grammar.dotted_symbol(&dr) {
                 if t == token {
                     // Successful, advance the dot and store in new_state
-                    let new_state = (dr.advance_dot(), state.1.advance_dot());
+                    let new_state = (dr.advance_dot(), state.1);
                     add_to_state_list(&mut new_state_list, new_state);
                     scanned = true;
                 }
@@ -279,8 +232,7 @@ where
         let mut start_rule_completed = false;
         let mut i = 0;
         while i < new_state_list.len() {
-            let dr = &new_state_list[i].0;
-            match self.grammar.dotted_symbol(dr.rule, dr.dot) {
+            match self.grammar.dotted_symbol(&new_state_list[i].0) {
                 CompiledSymbol::NonTerminal(nt) => {
                     predict(&mut new_state_list, nt, index + 1, &self.grammar)
                 }
@@ -291,22 +243,17 @@ where
                     // Complete
                     start_rule_completed =
                         start_rule_completed | self.grammar.is_start_symbol(completed);
-                    let start = new_state_list[i].1.start;
-                    let dot = new_state_list[i].1.dot;
-                    assert_eq!( dot, index+1);
+                    let start = new_state_list[i].1;
                     // Check all the rules at *start* if the dot is at the completed symbol
                     for rule in self.chart[start].iter() {
                         let start_dr = &rule.0;
                         if let CompiledSymbol::NonTerminal(maybe_completed) =
-                            self.grammar.dotted_symbol(start_dr.rule, start_dr.dot)
+                            self.grammar.dotted_symbol(&start_dr)
                         {
                             if maybe_completed == completed {
                                 let new_entry = (
                                     start_dr.advance_dot(),
-                                    StartDot {
-                                        start: rule.1.start,
-                                        dot: index + 1,
-                                    },
+                                        rule.1,
                                 );
                                 add_to_state_list(&mut new_state_list, new_entry);
                             }
@@ -337,8 +284,8 @@ where
             println!("chart[{}]:", i);
             for e in self.chart[i].iter() {
                 print!("  ");
-                self.grammar.print_dotted_rule(e.0.rule, e.0.dot);
-                println!(", [{}, {}]", e.1.start, e.1.dot);
+                self.grammar.print_dotted_rule(&e.0);
+                println!(", [{}]", e.1);
             }
         }
     }
