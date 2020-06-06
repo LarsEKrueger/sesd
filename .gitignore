@@ -11,3 +11,7 @@ Cargo.lock
 
 # PlamtUML Preview files
 doc/*.png
+
+# Intermediate files from unit testing
+*.dot
+*.dot.png
