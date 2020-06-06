@@ -313,38 +313,51 @@ where
         }
         CompiledSymbol::Completed(rule.0)
     }
-}
 
+    pub fn nt_name<'a>(&'a self, sym: SymbolId) -> &'a str {
+        &self.nonterminal_table[sym as usize]
+    }
+}
 
 impl<T> CompiledGrammar<T>
 where
-    T: Clone + std::fmt::Display,
+    T: Clone + std::fmt::Debug,
 {
-
-    pub fn write_dotted_rule(&self, writer:&mut dyn Write, dotted_rule: &DottedRule) {
+    pub fn write_dotted_rule(
+        &self,
+        writer: &mut dyn Write,
+        dotted_rule: &DottedRule,
+    ) -> std::io::Result<()> {
         let rule_index = dotted_rule.rule as usize;
         let dot_index = dotted_rule.dot as usize;
         let rule = &self.rules[rule_index];
-        write!(writer, "{} → ", self.nonterminal_table[rule.0 as usize]);
+        write!(writer, "{} → ", self.nonterminal_table[rule.0 as usize])?;
         for i in 0..rule.1.len() {
             if i == dot_index {
-                write!(writer, "• ");
+                write!(writer, "• ")?;
             }
             let sym = rule.1[i];
             if (sym as usize) < self.nonterminal_table.len() {
-                write!(writer, " {} ", self.nonterminal_table[sym as usize]);
+                write!(writer, "{} ", self.nonterminal_table[sym as usize])?;
             } else {
                 let t_ind = (sym as usize) - self.nonterminal_table.len();
-                write!(writer," '{}' ", self.terminal_table[t_ind]);
+                write!(writer, "'{:?}' ", self.terminal_table[t_ind])?;
             }
         }
         if dot_index == rule.1.len() {
-            write!(writer, "• ");
+            write!(writer, "• ")?;
         }
+        Ok(())
     }
 
-    pub fn print_dotted_rule(&self, dotted_rule: &DottedRule) {
-        self.write_dotted_rule( &mut std::io::stdout(), dotted_rule);
+    pub fn dotted_rule_to_string(&self, dotted_rule: &DottedRule) -> std::io::Result<String> {
+        let mut line = Vec::new();
+        self.write_dotted_rule(&mut line, dotted_rule)?;
+        Ok(String::from_utf8_lossy(&line).into_owned())
+    }
+
+    pub fn print_dotted_rule(&self, dotted_rule: &DottedRule) -> std::io::Result<()> {
+        self.write_dotted_rule(&mut std::io::stdout(), dotted_rule)
     }
 }
 
@@ -361,6 +374,10 @@ impl DottedRule {
             rule: self.rule,
             dot: self.dot + 1,
         }
+    }
+
+    pub fn is_first(&self) -> bool {
+        self.dot == 0
     }
 }
 
