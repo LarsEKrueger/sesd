@@ -48,6 +48,7 @@ type StateList = Vec<ChartEntry>;
 /// Entry in the parse tree.
 ///
 /// The node of the tree are the chart entries. The edges are stored separately.
+#[derive(PartialEq)]
 struct CstEdge {
     /// Index into StateList at the buffer index where the edge originates.
     ///
@@ -109,7 +110,7 @@ pub enum Verdict {
 }
 
 fn add_to_state_list(state_list: &mut StateList, entry: ChartEntry) -> SymbolId {
-    for (i,e) in state_list.iter().enumerate() {
+    for (i, e) in state_list.iter().enumerate() {
         if *e == entry {
             return i as SymbolId;
         }
@@ -117,6 +118,15 @@ fn add_to_state_list(state_list: &mut StateList, entry: ChartEntry) -> SymbolId 
     let res = state_list.len();
     state_list.push(entry);
     (res as SymbolId)
+}
+
+fn add_to_cst_list(cst_list: &mut CstList, entry: CstEdge) {
+    for e in cst_list.iter() {
+        if *e == entry {
+            return;
+        }
+    }
+    cst_list.push(entry);
 }
 
 fn predict<T>(
@@ -167,7 +177,7 @@ where
         let mut chart = Vec::new();
         chart.push(start_set);
         let mut cst = Vec::new();
-        cst.push( Vec::new());
+        cst.push(Vec::new());
         Self {
             grammar,
             chart,
@@ -226,8 +236,8 @@ where
             // Should only need to add one state list
             self.chart.push(Vec::new());
             assert!(index + 1 < self.chart.len());
-            self.cst.push( Vec::new());
-            assert_eq!(self.cst.len() , self.chart.len());
+            self.cst.push(Vec::new());
+            assert_eq!(self.cst.len(), self.chart.len());
         }
         // Get the state list to write to in the scanner. We work on a new vector to simplify the
         // access. This will change anyway when the chart is flattened.
@@ -279,7 +289,7 @@ where
                         start_rule_completed | self.grammar.is_start_symbol(completed);
                     let start = new_state_list[i].1;
                     // Check all the rules at *start* if the dot is at the completed symbol
-                    for (rule_index,rule) in self.chart[start].iter().enumerate() {
+                    for (rule_index, rule) in self.chart[start].iter().enumerate() {
                         let start_dr = &rule.0;
                         if let CompiledSymbol::NonTerminal(maybe_completed) =
                             self.grammar.dotted_symbol(&start_dr)
@@ -287,14 +297,32 @@ where
                             if maybe_completed == completed {
                                 // Update the Earley chart
                                 let new_entry = (start_dr.advance_dot(), rule.1);
-                                let to_state = add_to_state_list(&mut new_state_list, new_entry);
-                                // Create the CST edge.
-                                let new_edge = CstEdge {
-                                    from_state: i as SymbolId,
-                                    to_state,
-                                    to_index: index+1,
-                                };
-                                new_cst_list.push( new_edge);
+                                let new_state = add_to_state_list(&mut new_state_list, new_entry);
+                                // Create the CST edge from the completed rule to the rule that
+                                // started it, i.e. the parent/child link. Keep in mind that the
+                                // links have to go towards the older entries to keep them
+                                // consistent with the siblings edges.
+                                add_to_cst_list(
+                                    &mut new_cst_list,
+                                    CstEdge {
+                                        from_state: new_state,
+                                        to_state: i as SymbolId,
+                                        to_index: index + 1,
+                                    },
+                                );
+                                // Create the CST edge how the dot moved, i.e. the sibling link. Omit
+                                // links to the beginning of rules as they can't link to further
+                                // completions.
+                                if !start_dr.is_first() {
+                                    add_to_cst_list(
+                                        &mut new_cst_list,
+                                        CstEdge {
+                                            from_state: new_state,
+                                            to_state: rule_index as SymbolId,
+                                            to_index: start,
+                                        },
+                                    );
+                                }
                             }
                         }
                     }
@@ -304,7 +332,7 @@ where
         }
 
         self.chart[index + 1] = new_state_list;
-        self.cst[index+1] = new_cst_list;
+        self.cst[index + 1] = new_cst_list;
         self.valid_entries = index + 1;
 
         Ok(if start_rule_completed {
@@ -317,15 +345,17 @@ where
 
 impl<T> Parser<T>
 where
-    T: Clone + PartialEq + std::fmt::Display,
+    T: Clone + PartialEq + std::fmt::Debug,
 {
     pub fn print_chart(&self) {
         for i in 0..=self.valid_entries {
             println!("chart[{}]:", i);
             for e in self.chart[i].iter() {
-                print!("  ");
-                self.grammar.print_dotted_rule(&e.0);
-                println!(", [{}]", e.1);
+                println!(
+                    "  {}, [{}]",
+                    self.grammar.dotted_rule_to_string(&e.0).unwrap(),
+                    e.1
+                );
             }
         }
     }
@@ -336,48 +366,129 @@ mod tests {
     use super::*;
 
     use super::super::grammar::tests::define_grammar;
+    use super::super::grammar::{CompiledGrammar, CompiledSymbol, DottedRule, Grammar, SymbolId};
 
     use std::io::Write;
 
+    /// Define the grammar from: https://www.cs.unm.edu/~luger/ai-final2/CH9_Dynamic%20Programming%20and%20the%20Earley%20Parser.pdf
+    ///
+    /// These are the alrady tokenized words
+    #[derive(Hash, PartialOrd, PartialEq, Clone, Debug, Eq, Ord)]
+    pub enum Token {
+        john,
+        called,
+        mary,
+        from,
+        denver,
+    }
+
+    /// Define the grammar from: https://www.cs.unm.edu/~luger/ai-final2/CH9_Dynamic%20Programming%20and%20the%20Earley%20Parser.pdf
+    ///
+    /// S
+    /// S → NP VP
+    /// NP → NP PP
+    /// NP → Noun
+    /// VP → Verb NP
+    /// VP → VP PP
+    /// PP → Prep NP
+    /// Noun → “john”
+    /// Noun → “mary”
+    /// Noun → “denver”
+    /// Verb → “called”
+    /// Prep → “from”
+    pub fn token_grammar() -> Grammar<Token> {
+        let mut grammar: Grammar<Token> = Grammar::new();
+
+        use super::super::grammar::Symbol::*;
+        grammar.set_start("S".to_string());
+        grammar.add_rule(
+            "S".to_string(),
+            vec![NonTerminal("NP".to_string()), NonTerminal("VP".to_string())],
+        );
+        grammar.add_rule(
+            "NP".to_string(),
+            vec![NonTerminal("NP".to_string()), NonTerminal("PP".to_string())],
+        );
+        grammar.add_rule("NP".to_string(), vec![NonTerminal("Noun".to_string())]);
+        grammar.add_rule(
+            "VP".to_string(),
+            vec![
+                NonTerminal("Verb".to_string()),
+                NonTerminal("NP".to_string()),
+            ],
+        );
+        grammar.add_rule(
+            "VP".to_string(),
+            vec![NonTerminal("VP".to_string()), NonTerminal("PP".to_string())],
+        );
+        grammar.add_rule(
+            "PP".to_string(),
+            vec![
+                NonTerminal("Prep".to_string()),
+                NonTerminal("NP".to_string()),
+            ],
+        );
+        grammar.add_rule("Noun".to_string(), vec![Terminal(Token::john)]);
+        grammar.add_rule("Noun".to_string(), vec![Terminal(Token::mary)]);
+        grammar.add_rule("Noun".to_string(), vec![Terminal(Token::denver)]);
+        grammar.add_rule("Verb".to_string(), vec![Terminal(Token::called)]);
+        grammar.add_rule("Prep".to_string(), vec![Terminal(Token::from)]);
+
+        grammar
+    }
+
+    /// Successfully parse the example from
+    /// https://www.cs.unm.edu/~luger/ai-final2/CH9_Dynamic%20Programming%20and%20the%20Earley%20Parser.pdf.
+    ///
+    /// Print the parse chart at the end.
+    ///
+    /// Generate input for a visual representation using `dot`. Show with:
+    /// `cargo test -- --test-threads 1 --nocapture | grep '^dot:' | cut -f2 > john.dot && dot -O -Tpng john.dot`
+    ///
+    /// The graph is in `john.dot.png`.
     #[test]
     fn seq_success() {
-        let grammar = define_grammar();
+        let grammar = token_grammar();
         let compiled_grammar = grammar.compile().expect("compilation should have worked");
 
-        let mut parser = Parser::<char>::new(compiled_grammar);
+        let mut parser = Parser::<Token>::new(compiled_grammar);
         let mut index = 0;
-        for (i, c) in "john called mary from denver".chars().enumerate() {
-            println!("\n");
-            parser.print_chart();
-            println!("{}, '{}'", i, c);
-            let res = parser.update(i, c);
-            parser.print_chart();
+        for (i, c) in [Token::john, Token::called, Token::mary, Token::from]
+            .iter()
+            .enumerate()
+        {
+            let res = parser.update(i, c.clone());
             assert!(res.is_ok());
             assert!(res.unwrap() != Verdict::Reject);
             index = i;
         }
-        println!("\n");
-        parser.print_chart();
-        println!("{}, ' '", index + 1);
-        let res = parser.update(index + 1, ' ');
+        let res = parser.update(index + 1, Token::denver);
         parser.print_chart();
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), Verdict::Accept);
 
         // Print the parse tree for dot
         println!("\ndot:\tdigraph {{");
-        for (from_index,es) in  parser.cst.iter().enumerate() {
-            for e in es {
-                let dr_from = &(parser.chart[from_index][e.from_state as usize].0);
-                let dr_to = &(parser.chart[e.to_index][e.to_state as usize].0);
-
-                let mut line = "dot:\t\"".as_bytes().to_vec();
-                write!(&mut line, "({},{}): ", from_index, e.from_state);
-                parser.grammar.write_dotted_rule(&mut line, &dr_from);
-                write!( &mut line, "\" -> \"({},{}): ", e.to_index, e.to_state);
-                parser.grammar.write_dotted_rule(&mut line, &dr_to);
-                write!( &mut line, "\"\n");
-                std::io::stdout().write(&line);
+        // Print the nodes, using their index as an id
+        for (chart_index, state_list) in parser.chart.iter().enumerate() {
+            for (state_index, state) in state_list.iter().enumerate() {
+                println!(
+                    "dot:\tc_{}_{} [label=\"{} [{},{}]\"]",
+                    chart_index,
+                    state_index,
+                    parser.grammar.dotted_rule_to_string(&state.0).unwrap(),
+                    state.1,
+                    chart_index
+                );
+            }
+        }
+        // Print the edges
+        for (from_index, es) in parser.cst.iter().enumerate() {
+            for e in es.iter() {
+                println!(
+                    "dot:\tc_{}_{}  -> c_{}_{}",
+                    from_index, e.from_state, e.to_index, e.to_state
+                );
             }
         }
         println!("dot:\t}}");
