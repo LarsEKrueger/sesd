@@ -22,59 +22,14 @@
     SOFTWARE.
 */
 
-//! SESD public API
+//! Compiled-in data for bash sources
 
-mod buffer;
-mod grammar;
-mod parser;
+use sesd::{CompiledGrammar, Grammar};
 
-use buffer::Buffer;
-pub use grammar::CompiledGrammar;
-pub use grammar::Grammar;
-use parser::Parser;
+pub fn grammar() -> CompiledGrammar<char> {
+    let grammar = Grammar::<char>::new();
 
-/// Editor Block with Synchronous Parsing
-pub struct SyncBlock<T> {
-    buffer: Buffer<T>,
-    parser: Parser<T>,
-}
-
-impl<T> SyncBlock<T>
-where
-    T: Clone + PartialEq,
-{
-    pub fn new(grammar: CompiledGrammar<T>) -> Self {
-        Self {
-            buffer: Buffer::new(),
-            parser: Parser::new(grammar),
-        }
-    }
-
-    fn buffer_changed(&mut self) {
-        self.parser.buffer_changed(self.buffer.cursor());
-    }
-
-    pub fn clear(&mut self) {
-        self.buffer.clear();
-        self.buffer_changed();
-    }
-
-    pub fn enter(&mut self, token: T) {
-        let c = self.buffer.cursor();
-        self.buffer.enter(token.clone());
-        self.parser.update(c, token);
-    }
-
-    pub fn append_iter<I>(&mut self, iter: I)
-    where
-        I: Iterator<Item = T>,
-    {
-        for t in iter {
-            self.enter(t);
-        }
-    }
-
-    pub fn move_start(&mut self) {
-        self.buffer.move_start();
-    }
+    grammar
+        .compile()
+        .expect("compiling built-in grammar should not fail")
 }

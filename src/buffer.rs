@@ -106,6 +106,17 @@ impl<T> Buffer<T> {
     pub fn delete(&mut self, n: usize) {
         self.tokens.drain(self.cursor..(self.cursor + n));
     }
+
+    /// Delete the whole content
+    pub fn clear(&mut self) {
+        self.tokens.clear();
+        self.cursor = 0;
+    }
+
+    /// Return the current cursor position
+    pub fn cursor(&self) -> usize {
+        self.cursor
+    }
 }
 
 impl<T> Buffer<T>
