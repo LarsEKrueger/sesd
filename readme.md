@@ -113,3 +113,19 @@ outlined below. It will ensure that your bug can be reproduced and addressed.
 
       and report it's output.
 
+# LICENSE issues
+
+This crate is MIT licensed. Keep that in mind when you add e.g. grammars. The
+BASH grammar, for instance, is licensed under GPL v3. Thus, adapting the
+grammar to SESD would most likely constitute 'creating a derived work' and the
+resulting grammar is therefore licensed as GPL v3 too. Thus, it cannot compiled
+into SESD without changing the license of SESD to GPL v3 too.
+
+As soon as SESD can load grammars from separate files, the BASH grammar (and
+all other GPL licensed grammars) can be loaded. Thus, only the grammar
+definition file is licensed under GPL v3 and subject to free redistribution.
+
+*If you plan to use SESD in a commerical product, using a GPL v3 licensed
+grammar, check these issues with a lawyer.*
+
+As such, PRs for grammars need to be checked for the license of the grammar.
