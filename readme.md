@@ -113,6 +113,18 @@ outlined below. It will ensure that your bug can be reproduced and addressed.
 
       and report it's output.
 
+# Roadmap
+
+* [ ] 0.1 - Simple syntax directed editor
+    * One, compiled-in language
+* [ ] 0.2 - General syntax directed editor
+    * Dynamically loaded grammars and templates
+
+# TODO
+
+* [ ] Compile grammar tables using macros (no dynamic memory)
+
+
 # LICENSE issues
 
 This crate is MIT licensed. Keep that in mind when you add e.g. grammars. The
