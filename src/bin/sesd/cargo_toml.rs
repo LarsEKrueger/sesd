@@ -36,34 +36,6 @@
 //   expression = ws keyval ws maybe_comment
 //   expression = ws table ws maybe_comment
 //
-//   ;; Whitespace
-//
-//   ws = wschar ws
-//   ws =
-//   wschar =  ' '  ; Space
-//   wschar =  '\t'  ; Horizontal tab
-//
-//   ;; Newline
-//
-//   newline =  %x0A       ; LF
-//   newline =  %x0D %x0A  ; CRLF
-//
-//   ;; Comment
-//
-//   comment-start-symbol = '#'
-//   non-ascii = %x80-D7FF
-//   non-ascii = %xE000-10FFFF
-//   non-eol = %x09
-//   non-eol = %x20-7F
-//   non-eol = non-ascii
-//
-//   comment = comment-start-symbol non-eols
-//   non-eols = non-eol non-eols
-//   non-eols =
-//
-//   maybe_comment = comment
-//   maybe_comment =
-//
 //   ;; Key-Value pairs
 //
 //   keyval = key keyval-sep val
@@ -378,32 +350,78 @@
 //
 //   array-table-open  = %x5B.5B ws  ; [[ Double left square bracket
 //   array-table-close = ws %x5D.5D  ; ]] Double right square bracket
-//
-//   ;; Built-in ABNF terms, reproduced here for clarity
-//
-//   ALPHA = %x41-5A
-//   ALPHA = %x61-7A ; A-Z / a-z
-//   DIGIT = %x30-39 ; 0-9
-//   HEXDIG = DIGIT
-//   HEXDIG = 'A'
-//   HEXDIG = 'B'
-//   HEXDIG = 'C'
-//   HEXDIG = 'D'
-//   HEXDIG = 'E'
-//   HEXDIG = 'F'
-//   HEXDIG = 'a'
-//   HEXDIG = 'b'
-//   HEXDIG = 'c'
-//   HEXDIG = 'd'
-//   HEXDIG = 'e'
-//   HEXDIG = 'f'
 
-use sesd::{CharMatcher, CompiledGrammar, Grammar};
+use sesd::{CharMatcher, CompiledGrammar, Grammar, Symbol};
 
 pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
     let mut grammar = Grammar::<char, CharMatcher>::new();
 
     grammar.set_start("toml".to_string());
+
+    use CharMatcher::*;
+    use Symbol::*;
+
+    grammar.add_rule("ALPHA".to_string(), vec![Terminal(Range('A', 'Z'))]);
+    grammar.add_rule("ALPHA".to_string(), vec![Terminal(Range('a', 'z'))]);
+    grammar.add_rule("DIGIT".to_string(), vec![Terminal(Range('0', '9'))]);
+    grammar.add_rule("HEXDIG".to_string(), vec![NonTerminal("DIGIT".to_string())]);
+    grammar.add_rule("HEXDIG".to_string(), vec![Terminal(Range('A', 'F'))]);
+    grammar.add_rule("HEXDIG".to_string(), vec![Terminal(Range('a', 'f'))]);
+
+    grammar.add_rule(
+        "ws".to_string(),
+        vec![
+            NonTerminal("wschar".to_string()),
+            NonTerminal("ws".to_string()),
+        ],
+    );
+    grammar.add_rule("ws".to_string(), vec![]);
+    grammar.add_rule("wschar".to_string(), vec![Terminal(Exact(' '))]);
+    grammar.add_rule("wschar".to_string(), vec![Terminal(Exact('\t'))]);
+    grammar.add_rule("newline".to_string(), vec![Terminal(Exact('\x0A'))]);
+    grammar.add_rule(
+        "newline".to_string(),
+        vec![Terminal(Exact('\x0D')), Terminal(Exact('\x0A'))],
+    );
+
+    grammar.add_rule(
+        "comment-start-symbol".to_string(),
+        vec![Terminal(Exact('#'))],
+    );
+    grammar.add_rule(
+        "non-ascii".to_string(),
+        vec![Terminal(Range('\u{80}', '\u{D7FF}'))],
+    );
+    grammar.add_rule(
+        "non-ascii".to_string(),
+        vec![Terminal(Range('\u{E000}', '\u{10FFFF}'))],
+    );
+    grammar.add_rule("non-eol".to_string(), vec![Terminal(Exact('\t'))]);
+    grammar.add_rule("non-eol".to_string(), vec![Terminal(Range('\x20', '\x7F'))]);
+    grammar.add_rule(
+        "non-eol".to_string(),
+        vec![NonTerminal("non-ascii".to_string())],
+    );
+    grammar.add_rule(
+        "comment".to_string(),
+        vec![
+            NonTerminal("comment-start-symbol".to_string()),
+            NonTerminal("non-eols".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "non-eols".to_string(),
+        vec![
+            NonTerminal("non-eol".to_string()),
+            NonTerminal("non-eols".to_string()),
+        ],
+    );
+    grammar.add_rule("non-eols".to_string(), vec![]);
+    grammar.add_rule(
+        "maybe_comment".to_string(),
+        vec![NonTerminal("comment".to_string())],
+    );
+    grammar.add_rule("maybe_comment".to_string(), vec![]);
 
     grammar
         .compile()
