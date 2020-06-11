@@ -371,20 +371,18 @@ mod tests {
 
     use super::super::char::CharMatcher;
     use super::super::grammar::tests::define_grammar;
-    use super::super::grammar::{CompiledGrammar, CompiledSymbol, DottedRule, Grammar, SymbolId};
-
-    use std::io::Write;
+    use super::super::grammar::{Grammar, Symbol};
 
     /// Define the grammar from: https://www.cs.unm.edu/~luger/ai-final2/CH9_Dynamic%20Programming%20and%20the%20Earley%20Parser.pdf
     ///
     /// These are the alrady tokenized words
     #[derive(Hash, PartialOrd, PartialEq, Clone, Debug, Eq, Ord)]
     pub enum Token {
-        john,
-        called,
-        mary,
-        from,
-        denver,
+        John,
+        Called,
+        Mary,
+        From,
+        Denver,
     }
 
     /// Define the grammar from: https://www.cs.unm.edu/~luger/ai-final2/CH9_Dynamic%20Programming%20and%20the%20Earley%20Parser.pdf
@@ -433,11 +431,11 @@ mod tests {
                 NonTerminal("NP".to_string()),
             ],
         );
-        grammar.add_rule("Noun".to_string(), vec![Terminal(Token::john)]);
-        grammar.add_rule("Noun".to_string(), vec![Terminal(Token::mary)]);
-        grammar.add_rule("Noun".to_string(), vec![Terminal(Token::denver)]);
-        grammar.add_rule("Verb".to_string(), vec![Terminal(Token::called)]);
-        grammar.add_rule("Prep".to_string(), vec![Terminal(Token::from)]);
+        grammar.add_rule("Noun".to_string(), vec![Terminal(Token::John)]);
+        grammar.add_rule("Noun".to_string(), vec![Terminal(Token::Mary)]);
+        grammar.add_rule("Noun".to_string(), vec![Terminal(Token::Denver)]);
+        grammar.add_rule("Verb".to_string(), vec![Terminal(Token::Called)]);
+        grammar.add_rule("Prep".to_string(), vec![Terminal(Token::From)]);
 
         grammar
     }
@@ -458,7 +456,7 @@ mod tests {
 
         let mut parser = Parser::<Token, Token>::new(compiled_grammar);
         let mut index = 0;
-        for (i, c) in [Token::john, Token::called, Token::mary, Token::from]
+        for (i, c) in [Token::John, Token::Called, Token::Mary, Token::From]
             .iter()
             .enumerate()
         {
@@ -467,7 +465,7 @@ mod tests {
             assert!(res.unwrap() != Verdict::Reject);
             index = i;
         }
-        let res = parser.update(index + 1, Token::denver);
+        let res = parser.update(index + 1, Token::Denver);
         parser.print_chart();
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), Verdict::Accept);
@@ -546,5 +544,73 @@ mod tests {
         let res = parser.update(index + 1, ' ');
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), Verdict::Accept);
+    }
+
+    /// Test a grammar with empty rules
+    ///
+    /// S = a maybe_b c
+    /// maybe_b = b
+    /// maybe_b =
+    #[test]
+    fn empty() {
+        let mut grammar = Grammar::<char,CharMatcher>::new();
+        use CharMatcher::*;
+        use Symbol::*;
+        grammar.set_start( "S".to_string());
+        grammar.add_rule( "S".to_string(), vec![Terminal(Exact('a')), NonTerminal("maybe_b".to_string()), Terminal( Exact( 'c'))]);
+        grammar.add_rule( "maybe_b".to_string(), vec![Terminal(Exact('b'))]);
+        grammar.add_rule( "maybe_b".to_string(), vec![]);
+
+        let compiled_grammar = grammar.compile().expect("compilation should have worked");
+
+        let mut parser = Parser::<char, CharMatcher>::new(compiled_grammar);
+
+        // "abc" should be acceptable
+        {
+            let res = parser.update(0, 'a');
+            assert!(res.is_ok());
+            assert_eq!(res.unwrap(), Verdict::More);
+        }
+        {
+            let res = parser.update(1, 'b');
+            assert!(res.is_ok());
+            assert_eq!(res.unwrap(), Verdict::More);
+        }
+        {
+            let res = parser.update(2, 'c');
+            assert!(res.is_ok());
+            assert_eq!(res.unwrap(), Verdict::Accept);
+        }
+
+        // "ac" should be acceptable
+        parser.buffer_changed(0);
+        {
+            let res = parser.update(0, 'a');
+            assert!(res.is_ok());
+            assert_eq!(res.unwrap(), Verdict::More);
+        }
+        {
+            let res = parser.update(1, 'c');
+            parser.print_chart();
+            assert!(res.is_ok());
+            assert_eq!(res.unwrap(), Verdict::Accept);
+        }
+        // "abb" should fail
+        parser.buffer_changed(0);
+        {
+            let res = parser.update(0, 'a');
+            assert!(res.is_ok());
+            assert_eq!(res.unwrap(), Verdict::More);
+        }
+        {
+            let res = parser.update(1, 'b');
+            assert!(res.is_ok());
+            assert_eq!(res.unwrap(), Verdict::More);
+        }
+        {
+            let res = parser.update(2, 'b');
+            assert!(res.is_ok());
+            assert_eq!(res.unwrap(), Verdict::Reject);
+        }
     }
 }
