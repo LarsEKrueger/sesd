@@ -33,7 +33,7 @@ use structopt::StructOpt;
 
 use sesd::SyncBlock;
 
-mod bash;
+mod cargo_toml;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "sesd", about = "Syntax directed text editor")]
@@ -99,7 +99,7 @@ fn main() {
     eprintln!("{:?}", cmd_line);
 
     let mut app = App {
-        block: Block::new(bash::grammar()),
+        block: Block::new(cargo_toml::grammar()),
         error: String::new(),
     };
 
