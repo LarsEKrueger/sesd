@@ -31,9 +31,7 @@ mod parser;
 
 pub use self::char::CharMatcher;
 use buffer::Buffer;
-pub use grammar::CompiledGrammar;
-pub use grammar::Grammar;
-pub use grammar::Matcher;
+pub use grammar::{CompiledGrammar, Grammar, Matcher, Symbol};
 use parser::Parser;
 
 /// Editor Block with Synchronous Parsing
