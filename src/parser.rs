@@ -24,7 +24,7 @@
 
 //! Parser to work on Buffer
 
-use super::grammar::{CompiledGrammar, CompiledSymbol, DottedRule, SymbolId};
+use super::grammar::{CompiledGrammar, CompiledSymbol, DottedRule, Matcher, SymbolId};
 
 /// Parser error codes
 #[derive(Debug)]
@@ -65,8 +65,11 @@ struct CstEdge {
 type CstList = Vec<CstEdge>;
 
 /// Incrementally parse the input buffer.
-pub struct Parser<T> {
-    grammar: CompiledGrammar<T>,
+pub struct Parser<T, M>
+where
+    M: Matcher<T>,
+{
+    grammar: CompiledGrammar<T, M>,
 
     /// Parsing chart.
     ///
@@ -129,13 +132,13 @@ fn add_to_cst_list(cst_list: &mut CstList, entry: CstEdge) {
     cst_list.push(entry);
 }
 
-fn predict<T>(
+fn predict<T, M>(
     state_list: &mut StateList,
     symbol: SymbolId,
     dot_buffer: usize,
-    grammar: &CompiledGrammar<T>,
+    grammar: &CompiledGrammar<T, M>,
 ) where
-    T: Clone,
+    M: Matcher<T> + Clone,
 {
     for i in 0..grammar.rule_count() {
         if grammar.lhs_is(i, symbol) {
@@ -145,11 +148,12 @@ fn predict<T>(
     }
 }
 
-impl<T> Parser<T>
+impl<T, M> Parser<T, M>
 where
-    T: Clone + PartialEq,
+    T: Clone,
+    M: Matcher<T> + Clone,
 {
-    pub fn new(grammar: CompiledGrammar<T>) -> Self {
+    pub fn new(grammar: CompiledGrammar<T, M>) -> Self {
         // Index 0 is special: It contains all the predictions of the start symbol. As the chart is
         // only extended while parsing, chart entries before the current one aren't changed. Thus,
         // the fully predicted chart[0] only needs to be generated once.
@@ -256,7 +260,7 @@ where
         for state in state_list {
             let dr = &state.0;
             if let CompiledSymbol::Terminal(t) = self.grammar.dotted_symbol(&dr) {
-                if t == token {
+                if t.matches(token.clone()) {
                     // Successful, advance the dot and store in new_state
                     let new_state = (dr.advance_dot(), state.1);
                     add_to_state_list(&mut new_state_list, new_state);
@@ -343,9 +347,9 @@ where
     }
 }
 
-impl<T> Parser<T>
+impl<T, M> Parser<T, M>
 where
-    T: Clone + PartialEq + std::fmt::Debug,
+    M: Matcher<T> + Clone + PartialEq + std::fmt::Debug,
 {
     pub fn print_chart(&self) {
         for i in 0..=self.valid_entries {
@@ -365,6 +369,7 @@ where
 mod tests {
     use super::*;
 
+    use super::super::char::CharMatcher;
     use super::super::grammar::tests::define_grammar;
     use super::super::grammar::{CompiledGrammar, CompiledSymbol, DottedRule, Grammar, SymbolId};
 
@@ -396,8 +401,8 @@ mod tests {
     /// Noun → “denver”
     /// Verb → “called”
     /// Prep → “from”
-    pub fn token_grammar() -> Grammar<Token> {
-        let mut grammar: Grammar<Token> = Grammar::new();
+    pub fn token_grammar() -> Grammar<Token, Token> {
+        let mut grammar: Grammar<Token, Token> = Grammar::new();
 
         use super::super::grammar::Symbol::*;
         grammar.set_start("S".to_string());
@@ -451,7 +456,7 @@ mod tests {
         let grammar = token_grammar();
         let compiled_grammar = grammar.compile().expect("compilation should have worked");
 
-        let mut parser = Parser::<Token>::new(compiled_grammar);
+        let mut parser = Parser::<Token, Token>::new(compiled_grammar);
         let mut index = 0;
         for (i, c) in [Token::john, Token::called, Token::mary, Token::from]
             .iter()
@@ -499,7 +504,7 @@ mod tests {
         let grammar = define_grammar();
         let compiled_grammar = grammar.compile().expect("compilation should have worked");
 
-        let mut parser = Parser::<char>::new(compiled_grammar);
+        let mut parser = Parser::<char, CharMatcher>::new(compiled_grammar);
         let mut index = 0;
         for (i, c) in "john ".chars().enumerate() {
             let res = parser.update(i, c);
@@ -517,7 +522,7 @@ mod tests {
         let grammar = define_grammar();
         let compiled_grammar = grammar.compile().expect("compilation should have worked");
 
-        let mut parser = Parser::<char>::new(compiled_grammar);
+        let mut parser = Parser::<char, CharMatcher>::new(compiled_grammar);
 
         // Start as "john called denver"
         for (i, c) in "john called denver".chars().enumerate() {

@@ -28,6 +28,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::Hash;
 use std::io::Write;
+use std::marker::PhantomData;
 
 use itertools::Itertools;
 
@@ -49,10 +50,19 @@ pub enum Error {
 /// Type alias for Results with Errors
 type Result<T> = std::result::Result<T, Error>;
 
+/// Trait to match tokens
+///
+/// T is the type of the tokens to match
+pub trait Matcher<T> {
+    fn matches(&self, t: T) -> bool;
+}
+
 /// Grammar Symbols
-pub enum Symbol<T> {
+///
+/// The terminal symbols hold matcher instances to match against the input tokens of type `T`.
+pub enum Symbol<M> {
     /// Terminals are of the same type as in the Buffer struct.
-    Terminal(T),
+    Terminal(M),
     /// Non-terminals are identified by a string, which is later used for debugging and error messages.
     NonTerminal(String),
 }
@@ -66,12 +76,18 @@ pub enum Symbol<T> {
 /// parser or a fairly small set of terminal symbols. This needs to be changed later.
 ///
 /// TODO: Cope with character classes/sets natively.
-pub struct Grammar<T> {
+pub struct Grammar<T, M>
+where
+    M: Matcher<T>,
+{
     /// Rule table, (lhs, rhs)
-    rules: Vec<(String, Vec<Symbol<T>>)>,
+    rules: Vec<(String, Vec<Symbol<M>>)>,
 
     /// Non-terminal that
     start: String,
+
+    /// Marker to indicate the T is used indirectly by Matcher
+    _marker: PhantomData<T>,
 }
 
 /// Symbol IDs are indices into the symbol table. As such, the can be fairly small integers to
@@ -86,12 +102,15 @@ const MAX_SYMBOL_ID: u32 = std::u32::MAX;
 ///
 /// TODO: Make finding rules of NonTerminal more efficient. Sort rules by lhs. Either keep separate table of
 /// first fule index or store first rule index in rhs instead of symbol index.
-pub struct CompiledGrammar<T> {
+pub struct CompiledGrammar<T, M>
+where
+    M: Matcher<T>,
+{
     /// Names of symbols
     nonterminal_table: Vec<String>,
 
     /// Values of expected terminals
-    terminal_table: Vec<T>,
+    terminal_table: Vec<M>,
 
     /// Rules as indices into the symbol tables. If the ID is < nonterminal_table.len(), it's a
     /// non-terminal. Otherwise it's a terminal.
@@ -101,16 +120,19 @@ pub struct CompiledGrammar<T> {
 
     /// Index of start symbol
     pub start: SymbolId,
+
+    /// Marker to indicate the T is used indirectly by Matcher
+    _marker: std::marker::PhantomData<T>,
 }
 
 /// Decode the rule indices into symbol index and terminal
-pub enum CompiledSymbol<T> {
+pub enum CompiledSymbol<M> {
     /// Dot was at the end of the rule. Return the LHS
     Completed(SymbolId),
     /// Dot was on a nonterminal symbol
     NonTerminal(SymbolId),
     /// Dot was on a terminal
-    Terminal(T),
+    Terminal(M),
 }
 
 /// Dotted Rule from Earley Algo
@@ -120,6 +142,15 @@ pub struct DottedRule {
     rule: SymbolId,
     /// Index into rhs of rule
     dot: SymbolId,
+}
+
+impl<T> Matcher<T> for T
+where
+    T: PartialEq,
+{
+    fn matches(&self, t: T) -> bool {
+        *self == t
+    }
 }
 
 fn update_symbol(
@@ -136,20 +167,21 @@ fn update_symbol(
     }
 }
 
-impl<T> Grammar<T>
+impl<T, M> Grammar<T, M>
 where
-    T: Eq + Hash + Ord + Clone,
+    M: Matcher<T> + Hash + Ord + Clone,
 {
     pub fn new() -> Self {
         Self {
             rules: Vec::new(),
             start: String::new(),
+            _marker: PhantomData,
         }
     }
 
     /// Add a rule with the name of the left hand side symbol and the expansion of the right hand
     /// side.
-    pub fn add_rule(&mut self, lhs: String, rhs: Vec<Symbol<T>>) {
+    pub fn add_rule(&mut self, lhs: String, rhs: Vec<Symbol<M>>) {
         self.rules.push((lhs, rhs));
     }
 
@@ -159,7 +191,7 @@ where
         self.start = sym;
     }
 
-    pub fn compile(self) -> Result<CompiledGrammar<T>> {
+    pub fn compile(self) -> Result<CompiledGrammar<T, M>> {
         // Build symbol table. Remember for each symbol if it has been seen on the lhs and assign a
         // symbol ID.
         let mut symbol_set = HashMap::new();
@@ -225,7 +257,7 @@ where
         }
 
         // Build the terminal table
-        let terminal_table: Vec<T> = terminal_set
+        let terminal_table: Vec<M> = terminal_set
             .iter()
             .sorted_by(|a, b| Ord::cmp(a, b))
             .map(|x| (*x).clone())
@@ -273,13 +305,14 @@ where
             terminal_table,
             rules,
             start,
+            _marker: PhantomData,
         })
     }
 }
 
-impl<T> CompiledGrammar<T>
+impl<T, M> CompiledGrammar<T, M>
 where
-    T: Clone,
+    M: Matcher<T> + Clone,
 {
     pub fn rule_count(&self) -> usize {
         self.rules.len()
@@ -298,7 +331,7 @@ where
     }
 
     /// Return symbol after the dot or None if dot is at the end
-    pub fn dotted_symbol(&self, dotted_rule: &DottedRule) -> CompiledSymbol<T> {
+    pub fn dotted_symbol(&self, dotted_rule: &DottedRule) -> CompiledSymbol<M> {
         let rule_index = dotted_rule.rule as usize;
         let dot_index = dotted_rule.dot as usize;
         let rule = &self.rules[rule_index];
@@ -319,9 +352,9 @@ where
     }
 }
 
-impl<T> CompiledGrammar<T>
+impl<T, M> CompiledGrammar<T, M>
 where
-    T: Clone + std::fmt::Debug,
+    M: Matcher<T> + Clone + std::fmt::Debug,
 {
     pub fn write_dotted_rule(
         &self,
@@ -383,6 +416,7 @@ impl DottedRule {
 
 #[cfg(test)]
 pub mod tests {
+    use super::super::char::CharMatcher;
     use super::*;
 
     /// Define the grammar from: https://www.cs.unm.edu/~luger/ai-final2/CH9_Dynamic%20Programming%20and%20the%20Earley%20Parser.pdf
@@ -399,9 +433,10 @@ pub mod tests {
     /// Noun → “denver”
     /// Verb → “called”
     /// Prep → “from”
-    pub fn define_grammar() -> Grammar<char> {
-        let mut grammar: Grammar<char> = Grammar::new();
+    pub fn define_grammar() -> Grammar<char, CharMatcher> {
+        let mut grammar: Grammar<char, CharMatcher> = Grammar::new();
 
+        use CharMatcher::*;
         use Symbol::*;
         grammar.set_start("S".to_string());
         grammar.add_rule(
@@ -434,55 +469,55 @@ pub mod tests {
         grammar.add_rule(
             "Noun".to_string(),
             vec![
-                Terminal('j'),
-                Terminal('o'),
-                Terminal('h'),
-                Terminal('n'),
-                Terminal(' '),
+                Terminal(Exact('j')),
+                Terminal(Exact('o')),
+                Terminal(Exact('h')),
+                Terminal(Exact('n')),
+                Terminal(Exact(' ')),
             ],
         );
         grammar.add_rule(
             "Noun".to_string(),
             vec![
-                Terminal('m'),
-                Terminal('a'),
-                Terminal('r'),
-                Terminal('y'),
-                Terminal(' '),
+                Terminal(Exact('m')),
+                Terminal(Exact('a')),
+                Terminal(Exact('r')),
+                Terminal(Exact('y')),
+                Terminal(Exact(' ')),
             ],
         );
         grammar.add_rule(
             "Noun".to_string(),
             vec![
-                Terminal('d'),
-                Terminal('e'),
-                Terminal('n'),
-                Terminal('v'),
-                Terminal('e'),
-                Terminal('r'),
-                Terminal(' '),
+                Terminal(Exact('d')),
+                Terminal(Exact('e')),
+                Terminal(Exact('n')),
+                Terminal(Exact('v')),
+                Terminal(Exact('e')),
+                Terminal(Exact('r')),
+                Terminal(Exact(' ')),
             ],
         );
         grammar.add_rule(
             "Verb".to_string(),
             vec![
-                Terminal('c'),
-                Terminal('a'),
-                Terminal('l'),
-                Terminal('l'),
-                Terminal('e'),
-                Terminal('d'),
-                Terminal(' '),
+                Terminal(Exact('c')),
+                Terminal(Exact('a')),
+                Terminal(Exact('l')),
+                Terminal(Exact('l')),
+                Terminal(Exact('e')),
+                Terminal(Exact('d')),
+                Terminal(Exact(' ')),
             ],
         );
         grammar.add_rule(
             "Prep".to_string(),
             vec![
-                Terminal('f'),
-                Terminal('r'),
-                Terminal('o'),
-                Terminal('m'),
-                Terminal(' '),
+                Terminal(Exact('f')),
+                Terminal(Exact('r')),
+                Terminal(Exact('o')),
+                Terminal(Exact('m')),
+                Terminal(Exact(' ')),
             ],
         );
 
@@ -502,6 +537,8 @@ pub mod tests {
         assert_eq!(compiled_grammar.nonterminal_table[start], "S");
 
         let terminal_base = compiled_grammar.nonterminal_table.len();
+
+        use CharMatcher::*;
 
         let mut pp_found = false;
         let mut mary_found = false;
@@ -526,30 +563,30 @@ pub mod tests {
                     assert!(m >= terminal_base);
                     let m = m - terminal_base;
                     assert!(m < compiled_grammar.terminal_table.len());
-                    if compiled_grammar.terminal_table[m] == 'm' {
+                    if compiled_grammar.terminal_table[m] == Exact('m') {
                         let a = rule.1[1] as usize;
                         assert!(a >= terminal_base);
                         let a = a - terminal_base;
                         assert!(a < compiled_grammar.terminal_table.len());
-                        assert_eq!(compiled_grammar.terminal_table[a], 'a');
+                        assert_eq!(compiled_grammar.terminal_table[a], Exact('a'));
 
                         let r = rule.1[2] as usize;
                         assert!(r >= terminal_base);
                         let r = r - terminal_base;
                         assert!(r < compiled_grammar.terminal_table.len());
-                        assert_eq!(compiled_grammar.terminal_table[r], 'r');
+                        assert_eq!(compiled_grammar.terminal_table[r], Exact('r'));
 
                         let y = rule.1[3] as usize;
                         assert!(y >= terminal_base);
                         let y = y - terminal_base;
                         assert!(y < compiled_grammar.terminal_table.len());
-                        assert_eq!(compiled_grammar.terminal_table[y], 'y');
+                        assert_eq!(compiled_grammar.terminal_table[y], Exact('y'));
 
                         let sp = rule.1[4] as usize;
                         assert!(sp >= terminal_base);
                         let sp = sp - terminal_base;
                         assert!(sp < compiled_grammar.terminal_table.len());
-                        assert_eq!(compiled_grammar.terminal_table[sp], ' ');
+                        assert_eq!(compiled_grammar.terminal_table[sp], Exact(' '));
 
                         assert_eq!(mary_found, false);
                         mary_found = true;

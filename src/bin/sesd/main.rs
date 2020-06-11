@@ -31,7 +31,7 @@ use std::path::PathBuf;
 use pancurses::{endwin, initscr, noecho, Input};
 use structopt::StructOpt;
 
-use sesd::SyncBlock;
+use sesd::{CharMatcher, SyncBlock};
 
 mod cargo_toml;
 
@@ -43,7 +43,7 @@ struct CommandLine {
     input: PathBuf,
 }
 
-type Block = SyncBlock<char>;
+type Block = SyncBlock<char, CharMatcher>;
 
 /// All state of the edit app
 struct App {

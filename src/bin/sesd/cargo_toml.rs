@@ -51,10 +51,10 @@
 //   ;; Comment
 //
 //   comment-start-symbol = '#'
-//   non-ascii = %x80-D7FF 
+//   non-ascii = %x80-D7FF
 //   non-ascii = %xE000-10FFFF
-//   non-eol = %x09 
-//   non-eol = %x20-7F 
+//   non-eol = %x09
+//   non-eol = %x20-7F
 //   non-eol = non-ascii
 //
 //   comment = comment-start-symbol non-eols
@@ -68,18 +68,18 @@
 //
 //   keyval = key keyval-sep val
 //
-//   key = simple-key 
+//   key = simple-key
 //   key = dotted-key
-//   simple-key = quoted-key 
+//   simple-key = quoted-key
 //   simple-key = unquoted-key
 //
 //   unquoted-key = unquoted-key-char unquoted-key
 //   unquoted-key = unquoted-key-char
-//   unquoted-key-char = ALPHA 
-//   unquoted-key-char = DIGIT 
-//   unquoted-key-char = %x2D 
+//   unquoted-key-char = ALPHA
+//   unquoted-key-char = DIGIT
+//   unquoted-key-char = %x2D
 //   unquoted-key-char = %x5F
-//   quoted-key = basic-string 
+//   quoted-key = basic-string
 //   quoted-key = literal-string
 //   dotted-key = simple-key dotted-key-rest
 //   dotted-key-rest = dot-sep simple-key dotted-key-rest
@@ -88,19 +88,19 @@
 //   dot-sep   = ws '.' ws
 //   keyval-sep = ws '=' ws
 //
-//   val = string 
-//   val = boolean 
-//   val = array 
-//   val = inline-table 
-//   val = date-time 
-//   val = float 
+//   val = string
+//   val = boolean
+//   val = array
+//   val = inline-table
+//   val = date-time
+//   val = float
 //   val = integer
 //
 //   ;; String
 //
-//   string = ml-basic-string 
-//   string = basic-string 
-//   string = ml-literal-string 
+//   string = ml-basic-string
+//   string = basic-string
+//   string = ml-literal-string
 //   string = literal-string
 //
 //   ;; Basic String
@@ -111,12 +111,12 @@
 //
 //   quotation-mark = '"'
 //
-//   basic-char = basic-unescaped 
+//   basic-char = basic-unescaped
 //   basic-char = escaped
-//   basic-unescaped = wschar 
-//   basic-unescaped = %x21 
-//   basic-unescaped = %x23-5B 
-//   basic-unescaped = %x5D-7E 
+//   basic-unescaped = wschar
+//   basic-unescaped = %x21
+//   basic-unescaped = %x23-5B
+//   basic-unescaped = %x5D-7E
 //   basic-unescaped = non-ascii
 //   escaped = escape escape-seq-char
 //
@@ -137,16 +137,16 @@
 //   ml-basic-string-delim = quotation-mark quotation-mark quotation-mark
 //   ml-basic-body = *mlb-content *( mlb-quotes 1*mlb-content ) [ mlb-quotes ]
 //
-//   mlb-content = mlb-char 
-//   mlb-content = newline 
+//   mlb-content = mlb-char
+//   mlb-content = newline
 //   mlb-content = mlb-escaped-nl
-//   mlb-char = mlb-unescaped 
+//   mlb-char = mlb-unescaped
 //   mlb-char = escaped
 //   mlb-quotes = 1*2quotation-mark
-//   mlb-unescaped = wschar 
-//   mlb-unescaped = %x21 
-//   mlb-unescaped = %x23-5B 
-//   mlb-unescaped = %x5D-7E 
+//   mlb-unescaped = wschar
+//   mlb-unescaped = %x21
+//   mlb-unescaped = %x23-5B
+//   mlb-unescaped = %x5D-7E
 //   mlb-unescaped = non-ascii
 //   mlb-escaped-nl = escape ws newline *( wschar / newline )
 //
@@ -156,9 +156,9 @@
 //
 //   apostrophe = %x27 ; ' apostrophe
 //
-//   literal-char = %x09 
-//   literal-char = %x20-26 
-//   literal-char = %x28-7E 
+//   literal-char = %x09
+//   literal-char = %x20-26
+//   literal-char = %x28-7E
 //   literal-char = non-ascii
 //
 //   ;; Multiline Literal String
@@ -177,22 +177,22 @@
 //   [mll-quotes] =
 //
 //   some_mll-quotes-content = mll-quotes 1*mll-content some_mll-quotes-content
-//   some_mll-quotes-content = 
+//   some_mll-quotes-content =
 //
-//   mll-content = mll-char 
+//   mll-content = mll-char
 //   mll-content = newline
-//   mll-char = %x09 
-//   mll-char = %x20-26 
-//   mll-char = %x28-7E 
+//   mll-char = %x09
+//   mll-char = %x20-26
+//   mll-char = %x28-7E
 //   mll-char = non-ascii
 //   mll-quotes = apostrophe
 //   mll-quotes = apostrophe apostrophe
 //
 //   ;; Integer
 //
-//   integer = dec-int 
-//   integer = hex-int 
-//   integer = oct-int 
+//   integer = dec-int
+//   integer = hex-int
+//   integer = oct-int
 //   integer = bin-int
 //
 //   minus = %x2D                       ; -
@@ -210,36 +210,36 @@
 //   sign = minus
 //   sign = plus
 //   sign =
-//   unsigned-dec-int = DIGIT 
+//   unsigned-dec-int = DIGIT
 //   unsigned-dec-int = digit1-9 uns-dec-int-rest
 //
 //   uns-dec-int-rest = DIGIT_  uns-dec-int-rest
-//   uns-dec-int-rest = DIGIT_ 
+//   uns-dec-int-rest = DIGIT_
 //
-//   DIGIT_ = DIGIT 
+//   DIGIT_ = DIGIT
 //   DIGIT_ = underscore DIGIT
 //
-//   hex-int = hex-prefix HEXDIG hex-int-rest 
+//   hex-int = hex-prefix HEXDIG hex-int-rest
 //   hex-int-rest = HEXDIG_ hex-int-rest
 //   hex-int-rest =
-//   HEXDIG_ = HEXDIG 
+//   HEXDIG_ = HEXDIG
 //   HEXDIG_ = underscore HEXDIG
 //
 //   oct-int = oct-prefix digit0-7 oct-int-rest
-//   oct-int-rest = digit0-7_ oct-int-rest 
-//   oct-int-rest = 
+//   oct-int-rest = digit0-7_ oct-int-rest
+//   oct-int-rest =
 //   digit0-7_ = digit0-7
 //   digit0-7_ = underscore digit0-7
 //
 //   bin-int = bin-prefix digit0-1 bin-int-rest
 //   bin-int-rest = digit0-1_ bin-int-rest
-//   bin-int-rest = 
+//   bin-int-rest =
 //   digit0-1_ = digit0-1
 //   digit0-1_ = underscore digit0-1
 //
 //   ;; Float
 //
-//   float = float-int-part float_rest 
+//   float = float-int-part float_rest
 //   float = special-float
 //
 //   float_rest = exp
@@ -251,14 +251,14 @@
 //   float-int-part = dec-int
 //   frac = decimal-point zero-prefixable-int
 //   decimal-point = %x2E               ; .
-//   zero-prefixable-int = DIGIT zero-prefixable-int-rest 
+//   zero-prefixable-int = DIGIT zero-prefixable-int-rest
 //   zero-prefixable-int-rest = DIGIT_ zero-prefixable-int-rest
 //   zero-prefixable-int-rest =
 //
 //   exp = "e" float-exp-part
 //   float-exp-part = sign zero-prefixable-int
 //
-//   special-float = sign inf 
+//   special-float = sign inf
 //   special-float = sign nan
 //   inf = %x69 %x6e %x66  ; inf
 //   nan = %x6e %x61 %x6e  ; nan
@@ -273,16 +273,16 @@
 //
 //   ;; Date and Time (as defined in RFC 3339)
 //
-//   date-time      = offset-date-time 
-//   date-time = local-date-time 
-//   date-time = local-date 
+//   date-time      = offset-date-time
+//   date-time = local-date-time
+//   date-time = local-date
 //   date-time = local-time
 //
 //   date-fullyear  = 4DIGIT
 //   date-month     = 2DIGIT  ; 01-12
 //   date-mday      = 2DIGIT  ; 01-28, 01-29, 01-30, 01-31 based on month/year
-//   time-delim     = 'T' 
-//   time-delim     = 't' 
+//   time-delim     = 'T'
+//   time-delim     = 't'
 //   time-delim = %x20
 //   time-hour      = DIGIT DIGIT  ; 00-23
 //   time-minute    = DIGIT DIGIT  ; 00-59
@@ -293,8 +293,8 @@
 //   1*DIGIT = DIGIT
 //
 //   time-numoffset = sign time-hour ":" time-minute
-//   time-offset    = 'Z' 
-//   time-offset    = 'z' 
+//   time-offset    = 'Z'
+//   time-offset    = 'z'
 //   time-offset    = time-numoffset
 //
 //   partial-time   = time-hour ":" time-minute ":" time-second [time-secfrac]
@@ -340,14 +340,14 @@
 //   ws-comment-newline = wscn ws-comment-newline
 //   ws-comment-newline =
 //
-//   wscn = wschar 
+//   wscn = wschar
 //   wscn = [comment] newline
 //   [comment = comment
-//   [comment] = 
+//   [comment] =
 //
 //   ;; Table
 //
-//   table = std-table 
+//   table = std-table
 //   table = array-table
 //
 //   ;; Standard Table
@@ -366,7 +366,7 @@
 //   inline-table-sep   = ws %x2C ws  ; , Comma
 //
 //   [inline-table-keyvals] = inline-table-keyvals
-//   [inline-table-keyvals] = 
+//   [inline-table-keyvals] =
 //   inline-table-keyvals = keyval [inline-table-sepinline-table-keyvals]
 //
 //   [inline-table-sepinline-table-keyvals] = inline-table-sep inline-table-keyvals
@@ -381,10 +381,10 @@
 //
 //   ;; Built-in ABNF terms, reproduced here for clarity
 //
-//   ALPHA = %x41-5A 
+//   ALPHA = %x41-5A
 //   ALPHA = %x61-7A ; A-Z / a-z
 //   DIGIT = %x30-39 ; 0-9
-//   HEXDIG = DIGIT 
+//   HEXDIG = DIGIT
 //   HEXDIG = 'A'
 //   HEXDIG = 'B'
 //   HEXDIG = 'C'
@@ -398,12 +398,12 @@
 //   HEXDIG = 'e'
 //   HEXDIG = 'f'
 
-use sesd::{CompiledGrammar, Grammar};
+use sesd::{CharMatcher, CompiledGrammar, Grammar};
 
-pub fn grammar() -> CompiledGrammar<char> {
-    let mut grammar = Grammar::<char>::new();
+pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
+    let mut grammar = Grammar::<char, CharMatcher>::new();
 
-    grammar.set_start( "toml".to_string());
+    grammar.set_start("toml".to_string());
 
     grammar
         .compile()

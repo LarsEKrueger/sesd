@@ -25,25 +25,32 @@
 //! SESD public API
 
 mod buffer;
+mod char;
 mod grammar;
 mod parser;
 
+pub use self::char::CharMatcher;
 use buffer::Buffer;
 pub use grammar::CompiledGrammar;
 pub use grammar::Grammar;
+pub use grammar::Matcher;
 use parser::Parser;
 
 /// Editor Block with Synchronous Parsing
-pub struct SyncBlock<T> {
+pub struct SyncBlock<T, M>
+where
+    M: Matcher<T>,
+{
     buffer: Buffer<T>,
-    parser: Parser<T>,
+    parser: Parser<T, M>,
 }
 
-impl<T> SyncBlock<T>
+impl<T, M> SyncBlock<T, M>
 where
-    T: Clone + PartialEq,
+    T: Clone,
+    M: Matcher<T> + Clone,
 {
-    pub fn new(grammar: CompiledGrammar<T>) -> Self {
+    pub fn new(grammar: CompiledGrammar<T, M>) -> Self {
         Self {
             buffer: Buffer::new(),
             parser: Parser::new(grammar),
