@@ -215,9 +215,6 @@ where
                 return Err(Error::EmptySymbol);
             }
             update_symbol(&mut symbol_set, lhs.clone(), true, &mut next_symbol_id);
-            if r.1.is_empty() {
-                return Err(Error::EmptyRhs);
-            }
             // The index into the rhs can grow to the full length (i.e. past the last entry).
             if r.1.len() >= (MAX_SYMBOL_ID as usize) {
                 return Err(Error::TooLarge);

@@ -166,14 +166,64 @@ where
             }
         }
 
-        // The predictor for the start state is also special. As no empty rules are allowed, there
-        // is no need for *complete*.
-        // Since the state list will grow during this operation, the index needs to be checked every
-        // time.
+        // The predictor for the start state is also special. As empty rules are allowed,
+        // *complete* needs to run. However, it is restricted to start == 0.  Since the state list
+        // will grow during this operation, the index needs to be checked every time.
+        let mut new_cst_list = Vec::new();
         let mut i = 0;
         while i < start_set.len() {
-            if let CompiledSymbol::NonTerminal(nt) = grammar.dotted_symbol(&start_set[i].0) {
-                predict(&mut start_set, nt, 0, &grammar);
+            match grammar.dotted_symbol(&start_set[i].0) {
+                CompiledSymbol::NonTerminal(nt) => predict(&mut start_set, nt, 0, &grammar),
+                CompiledSymbol::Terminal(_) => {
+                    // Can't do anything as we don't know the first token.
+                }
+                CompiledSymbol::Completed(completed) => {
+                    // Complete
+                    let start = start_set[i].1;
+                    // Check all the rules at *start* if the dot is at the completed symbol. Start
+                    // must be 0. Thus a double-borrow would occur of this done with an iterator.
+                    let mut rule_index = 0;
+                    while rule_index < start_set.len() {
+                        if let CompiledSymbol::NonTerminal(maybe_completed) =
+                            grammar.dotted_symbol(&start_set[rule_index].0)
+                        {
+                            if maybe_completed == completed {
+                                // Update the Earley chart
+                                let new_entry = (
+                                    start_set[rule_index].0.advance_dot(),
+                                    start_set[rule_index].1,
+                                );
+                                let new_state = add_to_state_list(&mut start_set, new_entry);
+                                // Create the CST edge from the completed rule to the rule that
+                                // started it, i.e. the parent/child link. Keep in mind that the
+                                // links have to go towards the older entries to keep them
+                                // consistent with the siblings edges.
+                                add_to_cst_list(
+                                    &mut new_cst_list,
+                                    CstEdge {
+                                        from_state: new_state,
+                                        to_state: i as SymbolId,
+                                        to_index: 0,
+                                    },
+                                );
+                                // Create the CST edge how the dot moved, i.e. the sibling link. Omit
+                                // links to the beginning of rules as they can't link to further
+                                // completions.
+                                if !start_set[rule_index].0.is_first() {
+                                    add_to_cst_list(
+                                        &mut new_cst_list,
+                                        CstEdge {
+                                            from_state: new_state,
+                                            to_state: rule_index as SymbolId,
+                                            to_index: start,
+                                        },
+                                    );
+                                }
+                            }
+                        }
+                        rule_index += 1;
+                    }
+                }
             }
             i += 1;
         }
@@ -181,7 +231,7 @@ where
         let mut chart = Vec::new();
         chart.push(start_set);
         let mut cst = Vec::new();
-        cst.push(Vec::new());
+        cst.push(new_cst_list);
         Self {
             grammar,
             chart,
@@ -275,14 +325,19 @@ where
 
         let mut new_cst_list = Vec::new();
 
+        // In order to handle empty rules, the chart must be used, not a separate copy.
+        let new_index = index + 1;
+        self.chart[new_index] = new_state_list;
+        self.cst[new_index] = new_cst_list;
+
         // Predict and complete the new state. This will usually grow the state list. Thus, indexed
         // access is required.
         let mut start_rule_completed = false;
         let mut i = 0;
-        while i < new_state_list.len() {
-            match self.grammar.dotted_symbol(&new_state_list[i].0) {
+        while i < self.chart[new_index].len() {
+            match self.grammar.dotted_symbol(&self.chart[new_index][i].0) {
                 CompiledSymbol::NonTerminal(nt) => {
-                    predict(&mut new_state_list, nt, index + 1, &self.grammar)
+                    predict(&mut self.chart[new_index], nt, new_index, &self.grammar)
                 }
                 CompiledSymbol::Terminal(_) => {
                     // Can't do anything as we don't know the new token.
@@ -291,35 +346,39 @@ where
                     // Complete
                     start_rule_completed =
                         start_rule_completed | self.grammar.is_start_symbol(completed);
-                    let start = new_state_list[i].1;
+                    let start = self.chart[new_index][i].1;
                     // Check all the rules at *start* if the dot is at the completed symbol
-                    for (rule_index, rule) in self.chart[start].iter().enumerate() {
-                        let start_dr = &rule.0;
+                    let mut rule_index = 0;
+                    while rule_index < self.chart[start].len() {
                         if let CompiledSymbol::NonTerminal(maybe_completed) =
-                            self.grammar.dotted_symbol(&start_dr)
+                            self.grammar.dotted_symbol(&self.chart[start][rule_index].0)
                         {
                             if maybe_completed == completed {
                                 // Update the Earley chart
-                                let new_entry = (start_dr.advance_dot(), rule.1);
-                                let new_state = add_to_state_list(&mut new_state_list, new_entry);
+                                let new_entry = (
+                                    self.chart[start][rule_index].0.advance_dot(),
+                                    self.chart[start][rule_index].1,
+                                );
+                                let new_state =
+                                    add_to_state_list(&mut self.chart[new_index], new_entry);
                                 // Create the CST edge from the completed rule to the rule that
                                 // started it, i.e. the parent/child link. Keep in mind that the
                                 // links have to go towards the older entries to keep them
                                 // consistent with the siblings edges.
                                 add_to_cst_list(
-                                    &mut new_cst_list,
+                                    &mut self.cst[new_index],
                                     CstEdge {
                                         from_state: new_state,
                                         to_state: i as SymbolId,
-                                        to_index: index + 1,
+                                        to_index: new_index,
                                     },
                                 );
                                 // Create the CST edge how the dot moved, i.e. the sibling link. Omit
                                 // links to the beginning of rules as they can't link to further
                                 // completions.
-                                if !start_dr.is_first() {
+                                if !self.chart[start][rule_index].0.is_first() {
                                     add_to_cst_list(
-                                        &mut new_cst_list,
+                                        &mut self.cst[new_index],
                                         CstEdge {
                                             from_state: new_state,
                                             to_state: rule_index as SymbolId,
@@ -329,14 +388,13 @@ where
                                 }
                             }
                         }
+                        rule_index += 1;
                     }
                 }
             }
             i += 1;
         }
 
-        self.chart[index + 1] = new_state_list;
-        self.cst[index + 1] = new_cst_list;
         self.valid_entries = index + 1;
 
         Ok(if start_rule_completed {
@@ -553,13 +611,20 @@ mod tests {
     /// maybe_b =
     #[test]
     fn empty() {
-        let mut grammar = Grammar::<char,CharMatcher>::new();
+        let mut grammar = Grammar::<char, CharMatcher>::new();
         use CharMatcher::*;
         use Symbol::*;
-        grammar.set_start( "S".to_string());
-        grammar.add_rule( "S".to_string(), vec![Terminal(Exact('a')), NonTerminal("maybe_b".to_string()), Terminal( Exact( 'c'))]);
-        grammar.add_rule( "maybe_b".to_string(), vec![Terminal(Exact('b'))]);
-        grammar.add_rule( "maybe_b".to_string(), vec![]);
+        grammar.set_start("S".to_string());
+        grammar.add_rule(
+            "S".to_string(),
+            vec![
+                Terminal(Exact('a')),
+                NonTerminal("maybe_b".to_string()),
+                Terminal(Exact('c')),
+            ],
+        );
+        grammar.add_rule("maybe_b".to_string(), vec![Terminal(Exact('b'))]);
+        grammar.add_rule("maybe_b".to_string(), vec![]);
 
         let compiled_grammar = grammar.compile().expect("compilation should have worked");
 
