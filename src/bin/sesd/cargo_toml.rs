@@ -27,330 +27,6 @@
 //! This is based on https://github.com/toml-lang/toml/blob/master/toml.abnf, which is
 //! MIT licensed.
 
-//   toml = expression
-//   toml = expression expressions
-//   expressions = newline expression expressions
-//   expressions = newline
-//
-//   expression = ws maybe_comment
-//   expression = ws keyval ws maybe_comment
-//   expression = ws table ws maybe_comment
-//
-//   ;; Key-Value pairs
-//
-//   keyval = key keyval-sep val
-//
-//   key = simple-key
-//   key = dotted-key
-//   simple-key = quoted-key
-//   simple-key = unquoted-key
-//
-//   unquoted-key = unquoted-key-char unquoted-key
-//   unquoted-key = unquoted-key-char
-//   unquoted-key-char = ALPHA
-//   unquoted-key-char = DIGIT
-//   unquoted-key-char = %x2D
-//   unquoted-key-char = %x5F
-//   quoted-key = basic-string
-//   quoted-key = literal-string
-//   dotted-key = simple-key dotted-key-rest
-//   dotted-key-rest = dot-sep simple-key dotted-key-rest
-//   dotted-key-rest = dot-sep simple-key
-//
-//   dot-sep   = ws '.' ws
-//   keyval-sep = ws '=' ws
-//
-//   val = string
-//   val = boolean
-//   val = array
-//   val = inline-table
-//   val = date-time
-//   val = float
-//   val = integer
-//
-//   ;; String
-//
-//   string = ml-basic-string
-//   string = basic-string
-//   string = ml-literal-string
-//   string = literal-string
-//
-//   ;; Basic String
-//
-//   basic-string = quotation-mark basic-chars quotation-mark
-//   basic-chars = basic-char basic-chars
-//   basic-chars =
-//
-//   quotation-mark = '"'
-//
-//   basic-char = basic-unescaped
-//   basic-char = escaped
-//   basic-unescaped = wschar
-//   basic-unescaped = %x21
-//   basic-unescaped = %x23-5B
-//   basic-unescaped = %x5D-7E
-//   basic-unescaped = non-ascii
-//   escaped = escape escape-seq-char
-//
-//   escape = '\\'
-//   escape-seq-char = %x22         ; "    quotation mark  U+0022
-//   escape-seq-char = %x5C         ; \    reverse solidus U+005C
-//   escape-seq-char = %x62         ; b    backspace       U+0008
-//   escape-seq-char = %x66         ; f    form feed       U+000C
-//   escape-seq-char = %x6E         ; n    line feed       U+000A
-//   escape-seq-char = %x72         ; r    carriage return U+000D
-//   escape-seq-char = %x74         ; t    tab             U+0009
-//   escape-seq-char = %x75 4HEXDIG ; uXXXX                U+XXXX
-//   escape-seq-char = %x55 8HEXDIG ; UXXXXXXXX            U+XXXXXXXX
-//
-//   ;; Multiline Basic String
-//
-//   ml-basic-string = ml-basic-string-delim ml-basic-body ml-basic-string-delim
-//   ml-basic-string-delim = quotation-mark quotation-mark quotation-mark
-//   ml-basic-body = *mlb-content *( mlb-quotes 1*mlb-content ) [ mlb-quotes ]
-//
-//   mlb-content = mlb-char
-//   mlb-content = newline
-//   mlb-content = mlb-escaped-nl
-//   mlb-char = mlb-unescaped
-//   mlb-char = escaped
-//   mlb-quotes = 1*2quotation-mark
-//   mlb-unescaped = wschar
-//   mlb-unescaped = %x21
-//   mlb-unescaped = %x23-5B
-//   mlb-unescaped = %x5D-7E
-//   mlb-unescaped = non-ascii
-//   mlb-escaped-nl = escape ws newline *( wschar / newline )
-//
-//   ;; Literal String
-//
-//   literal-string = apostrophe *literal-char apostrophe
-//
-//   apostrophe = %x27 ; ' apostrophe
-//
-//   literal-char = %x09
-//   literal-char = %x20-26
-//   literal-char = %x28-7E
-//   literal-char = non-ascii
-//
-//   ;; Multiline Literal String
-//
-//   ml-literal-string = ml-literal-string-delim ml-literal-body ml-literal-string-delim
-//   ml-literal-string-delim = 3apostrophe
-//   ml-literal-body = *mll-content some_mll-quotes-content [mll-quotes]
-//
-//   *mll-content = mll-content *mll-content
-//   *mll-content =
-//
-//   1*mll-content = mll-content 1*mll-content
-//   1*mll-content = mll-content
-//
-//   [mll-quotes] = mll-quotes
-//   [mll-quotes] =
-//
-//   some_mll-quotes-content = mll-quotes 1*mll-content some_mll-quotes-content
-//   some_mll-quotes-content =
-//
-//   mll-content = mll-char
-//   mll-content = newline
-//   mll-char = %x09
-//   mll-char = %x20-26
-//   mll-char = %x28-7E
-//   mll-char = non-ascii
-//   mll-quotes = apostrophe
-//   mll-quotes = apostrophe apostrophe
-//
-//   ;; Integer
-//
-//   integer = dec-int
-//   integer = hex-int
-//   integer = oct-int
-//   integer = bin-int
-//
-//   minus = %x2D                       ; -
-//   plus = %x2B                        ; +
-//   underscore = %x5F                  ; _
-//   digit1-9 = %x31-39                 ; 1-9
-//   digit0-7 = %x30-37                 ; 0-7
-//   digit0-1 = %x30-31                 ; 0-1
-//
-//   hex-prefix = %x30 %x78               ; 0x
-//   oct-prefix = %x30 %x6f               ; 0o
-//   bin-prefix = %x30 %x62               ; 0b
-//
-//   dec-int = sign unsigned-dec-int
-//   sign = minus
-//   sign = plus
-//   sign =
-//   unsigned-dec-int = DIGIT
-//   unsigned-dec-int = digit1-9 uns-dec-int-rest
-//
-//   uns-dec-int-rest = DIGIT_  uns-dec-int-rest
-//   uns-dec-int-rest = DIGIT_
-//
-//   DIGIT_ = DIGIT
-//   DIGIT_ = underscore DIGIT
-//
-//   hex-int = hex-prefix HEXDIG hex-int-rest
-//   hex-int-rest = HEXDIG_ hex-int-rest
-//   hex-int-rest =
-//   HEXDIG_ = HEXDIG
-//   HEXDIG_ = underscore HEXDIG
-//
-//   oct-int = oct-prefix digit0-7 oct-int-rest
-//   oct-int-rest = digit0-7_ oct-int-rest
-//   oct-int-rest =
-//   digit0-7_ = digit0-7
-//   digit0-7_ = underscore digit0-7
-//
-//   bin-int = bin-prefix digit0-1 bin-int-rest
-//   bin-int-rest = digit0-1_ bin-int-rest
-//   bin-int-rest =
-//   digit0-1_ = digit0-1
-//   digit0-1_ = underscore digit0-1
-//
-//   ;; Float
-//
-//   float = float-int-part float_rest
-//   float = special-float
-//
-//   float_rest = exp
-//   float_rest = frac [exp]
-//
-//   [exp] = exp
-//   [exp] =
-//
-//   float-int-part = dec-int
-//   frac = decimal-point zero-prefixable-int
-//   decimal-point = %x2E               ; .
-//   zero-prefixable-int = DIGIT zero-prefixable-int-rest
-//   zero-prefixable-int-rest = DIGIT_ zero-prefixable-int-rest
-//   zero-prefixable-int-rest =
-//
-//   exp = "e" float-exp-part
-//   float-exp-part = sign zero-prefixable-int
-//
-//   special-float = sign inf
-//   special-float = sign nan
-//   inf = %x69 %x6e %x66  ; inf
-//   nan = %x6e %x61 %x6e  ; nan
-//
-//   ;; Boolean
-//
-//   boolean = true
-//   boolean = false
-//
-//   true    = %x74 %x72 %x75.65     ; true
-//   false   = %x66 %x61 %x6C %x73 %x65  ; false
-//
-//   ;; Date and Time (as defined in RFC 3339)
-//
-//   date-time      = offset-date-time
-//   date-time = local-date-time
-//   date-time = local-date
-//   date-time = local-time
-//
-//   date-fullyear  = 4DIGIT
-//   date-month     = 2DIGIT  ; 01-12
-//   date-mday      = 2DIGIT  ; 01-28, 01-29, 01-30, 01-31 based on month/year
-//   time-delim     = 'T'
-//   time-delim     = 't'
-//   time-delim = %x20
-//   time-hour      = DIGIT DIGIT  ; 00-23
-//   time-minute    = DIGIT DIGIT  ; 00-59
-//   time-second    = DIGIT DIGIT  ; 00-58, 00-59, 00-60 based on leap second rules
-//   time-secfrac   = '.' 1*DIGIT
-//
-//   1*DIGIT = DIGIT 1*DIGIT
-//   1*DIGIT = DIGIT
-//
-//   time-numoffset = sign time-hour ":" time-minute
-//   time-offset    = 'Z'
-//   time-offset    = 'z'
-//   time-offset    = time-numoffset
-//
-//   partial-time   = time-hour ":" time-minute ":" time-second [time-secfrac]
-//   [time-secfrac] = time-secfrac
-//   [time-secfrac] =
-//   full-date      = date-fullyear "-" date-month "-" date-mday
-//   full-time      = partial-time time-offset
-//
-//   ;; Offset Date-Time
-//
-//   offset-date-time = full-date time-delim full-time
-//
-//   ;; Local Date-Time
-//
-//   local-date-time = full-date time-delim partial-time
-//
-//   ;; Local Date
-//
-//   local-date = full-date
-//
-//   ;; Local Time
-//
-//   local-time = partial-time
-//
-//   ;; Array
-//
-//   array = array-open [array-values] ws-comment-newline array-close
-//
-//   [array-values] = array-values
-//   [array-values] =
-//
-//   array-open =  %x5B ; [
-//   array-close = %x5D ; ]
-//
-//   array-values =  ws-comment-newline val ws array-sep array-values
-//   array-values = ws-comment-newline val ws [array-sep]
-//
-//   [array-sep] = array-sep
-//   [array-sep] =
-//
-//   array-sep = %x2C  ; , Comma
-//
-//   ws-comment-newline = wscn ws-comment-newline
-//   ws-comment-newline =
-//
-//   wscn = wschar
-//   wscn = [comment] newline
-//   [comment = comment
-//   [comment] =
-//
-//   ;; Table
-//
-//   table = std-table
-//   table = array-table
-//
-//   ;; Standard Table
-//
-//   std-table = std-table-open key std-table-close
-//
-//   std-table-open  = %x5B ws     ; [ Left square bracket
-//   std-table-close = ws %x5D     ; ] Right square bracket
-//
-//   ;; Inline Table
-//
-//   inline-table = inline-table-open [inline-table-keyvals] inline-table-close
-//
-//   inline-table-open  = %x7B ws     ; {
-//   inline-table-close = ws %x7D     ; }
-//   inline-table-sep   = ws %x2C ws  ; , Comma
-//
-//   [inline-table-keyvals] = inline-table-keyvals
-//   [inline-table-keyvals] =
-//   inline-table-keyvals = keyval [inline-table-sepinline-table-keyvals]
-//
-//   [inline-table-sepinline-table-keyvals] = inline-table-sep inline-table-keyvals
-//   [inline-table-sepinline-table-keyvals] =
-//
-//   ;; Array Table
-//
-//   array-table = array-table-open key array-table-close
-//
-//   array-table-open  = %x5B.5B ws  ; [[ Double left square bracket
-//   array-table-close = ws %x5D.5D  ; ]] Double right square bracket
-
 use sesd::{CharMatcher, CompiledGrammar, Grammar, Symbol};
 
 pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
@@ -422,6 +98,1074 @@ pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
         vec![NonTerminal("comment".to_string())],
     );
     grammar.add_rule("maybe_comment".to_string(), vec![]);
+
+    grammar.add_rule(
+        "table".to_string(),
+        vec![NonTerminal("std-table".to_string())],
+    );
+    grammar.add_rule(
+        "table".to_string(),
+        vec![NonTerminal("array-table".to_string())],
+    );
+    grammar.add_rule(
+        "std-table".to_string(),
+        vec![
+            NonTerminal("std-table-open".to_string()),
+            NonTerminal("key".to_string()),
+            NonTerminal("std-table-close".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "std-table-open ".to_string(),
+        vec![Terminal(Exact('[')), NonTerminal("ws".to_string())],
+    );
+    grammar.add_rule(
+        "std-table-close".to_string(),
+        vec![NonTerminal("ws".to_string()), Terminal(Exact(']'))],
+    );
+    grammar.add_rule(
+        "inline-table".to_string(),
+        vec![
+            NonTerminal("inline-table-open".to_string()),
+            NonTerminal("[inline-table-keyvals]".to_string()),
+            NonTerminal("inline-table-close".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "inline-table-open ".to_string(),
+        vec![Terminal(Exact('{')), NonTerminal("ws".to_string())],
+    );
+    grammar.add_rule(
+        "inline-table-close".to_string(),
+        vec![NonTerminal("ws".to_string()), Terminal(Exact('}'))],
+    );
+    grammar.add_rule(
+        "inline-table-sep  ".to_string(),
+        vec![
+            NonTerminal("ws".to_string()),
+            Terminal(Exact(',')),
+            NonTerminal("ws".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "[inline-table-keyvals]".to_string(),
+        vec![NonTerminal("inline-table-keyvals".to_string())],
+    );
+    grammar.add_rule("[inline-table-keyvals]".to_string(), vec![]);
+    grammar.add_rule(
+        "inline-table-keyvals".to_string(),
+        vec![
+            NonTerminal("keyval".to_string()),
+            NonTerminal("[inline-table-sepinline-table-keyvals]".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "[inline-table-sepinline-table-keyvals]".to_string(),
+        vec![
+            NonTerminal("inline-table-sep".to_string()),
+            NonTerminal("inline-table-keyvals".to_string()),
+        ],
+    );
+    grammar.add_rule("[inline-table-sepinline-table-keyvals]".to_string(), vec![]);
+    grammar.add_rule(
+        "array-table".to_string(),
+        vec![
+            NonTerminal("array-table-open".to_string()),
+            NonTerminal("key".to_string()),
+            NonTerminal("array-table-close".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "array-table-open ".to_string(),
+        vec![
+            Terminal(Exact('[')),
+            Terminal(Exact('[')),
+            NonTerminal("ws".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "array-table-close".to_string(),
+        vec![
+            NonTerminal("ws".to_string()),
+            Terminal(Exact(']')),
+            Terminal(Exact(']')),
+        ],
+    );
+
+    grammar.add_rule(
+        "array".to_string(),
+        vec![
+            NonTerminal("array-open".to_string()),
+            NonTerminal("[array-values]".to_string()),
+            NonTerminal("ws-comment-newline".to_string()),
+            NonTerminal("array-close".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "[array-values]".to_string(),
+        vec![NonTerminal("array-values".to_string())],
+    );
+    grammar.add_rule("[array-values]".to_string(), vec![]);
+    grammar.add_rule("array-open".to_string(), vec![Terminal(Exact('['))]);
+    grammar.add_rule("array-close".to_string(), vec![Terminal(Exact(']'))]);
+    grammar.add_rule(
+        "array-values".to_string(),
+        vec![
+            NonTerminal("ws-comment-newline".to_string()),
+            NonTerminal("val".to_string()),
+            NonTerminal("ws".to_string()),
+            NonTerminal("array-sep".to_string()),
+            NonTerminal("array-values".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "array-values".to_string(),
+        vec![
+            NonTerminal("ws-comment-newline".to_string()),
+            NonTerminal("val".to_string()),
+            NonTerminal("ws".to_string()),
+            NonTerminal("[array-sep]".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "[array-sep]".to_string(),
+        vec![NonTerminal("array-sep".to_string())],
+    );
+    grammar.add_rule("[array-sep]".to_string(), vec![]);
+    grammar.add_rule("array-sep".to_string(), vec![Terminal(Exact(','))]);
+    grammar.add_rule(
+        "ws-comment-newline".to_string(),
+        vec![
+            NonTerminal("wscn".to_string()),
+            NonTerminal("ws-comment-newline".to_string()),
+        ],
+    );
+    grammar.add_rule("ws-comment-newline".to_string(), vec![]);
+    grammar.add_rule("wscn".to_string(), vec![NonTerminal("wschar".to_string())]);
+    grammar.add_rule(
+        "wscn".to_string(),
+        vec![
+            NonTerminal("[comment]".to_string()),
+            NonTerminal("newline".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "[comment".to_string(),
+        vec![NonTerminal("comment".to_string())],
+    );
+    grammar.add_rule("[comment]".to_string(), vec![]);
+
+    grammar.add_rule(
+        "date-time".to_string(),
+        vec![NonTerminal("offset-date-time".to_string())],
+    );
+    grammar.add_rule(
+        "date-time".to_string(),
+        vec![NonTerminal("local-date-time".to_string())],
+    );
+    grammar.add_rule(
+        "date-time".to_string(),
+        vec![NonTerminal("local-date".to_string())],
+    );
+    grammar.add_rule(
+        "date-time".to_string(),
+        vec![NonTerminal("local-time".to_string())],
+    );
+    grammar.add_rule(
+        "date-fullyear".to_string(),
+        vec![NonTerminal("4DIGIT".to_string())],
+    );
+    grammar.add_rule(
+        "4DIGIT".to_string(),
+        vec![
+            NonTerminal("2DIGIT".to_string()),
+            NonTerminal("2DIGIT".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "2DIGIT".to_string(),
+        vec![
+            NonTerminal("DIGIT".to_string()),
+            NonTerminal("DIGIT".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "date-month".to_string(),
+        vec![NonTerminal("2DIGIT".to_string())],
+    );
+    grammar.add_rule(
+        "date-mday".to_string(),
+        vec![NonTerminal("2DIGIT".to_string())],
+    );
+    grammar.add_rule("time-delim".to_string(), vec![Terminal(Exact('T'))]);
+    grammar.add_rule("time-delim".to_string(), vec![Terminal(Exact('t'))]);
+    grammar.add_rule("time-delim".to_string(), vec![Terminal(Exact(' '))]);
+    grammar.add_rule(
+        "time-hour".to_string(),
+        vec![NonTerminal("2DIGIT".to_string())],
+    );
+    grammar.add_rule(
+        "time-minute".to_string(),
+        vec![NonTerminal("2DIGIT".to_string())],
+    );
+    grammar.add_rule(
+        "time-second".to_string(),
+        vec![NonTerminal("2DIGIT".to_string())],
+    );
+    grammar.add_rule(
+        "time-secfrac".to_string(),
+        vec![Terminal(Exact('.')), NonTerminal("1*DIGIT".to_string())],
+    );
+    grammar.add_rule(
+        "1*DIGIT".to_string(),
+        vec![
+            NonTerminal("DIGIT".to_string()),
+            NonTerminal("1*DIGIT".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "1*DIGIT".to_string(),
+        vec![NonTerminal("DIGIT".to_string())],
+    );
+    grammar.add_rule(
+        "time-numoffset".to_string(),
+        vec![
+            NonTerminal("sign".to_string()),
+            NonTerminal("time-hour".to_string()),
+            Terminal(Exact(':')),
+            NonTerminal("time-minute".to_string()),
+        ],
+    );
+    grammar.add_rule("time-offset".to_string(), vec![Terminal(Exact('Z'))]);
+    grammar.add_rule("time-offset".to_string(), vec![Terminal(Exact('z'))]);
+    grammar.add_rule(
+        "time-offset".to_string(),
+        vec![NonTerminal("time-numoffset".to_string())],
+    );
+    grammar.add_rule(
+        "partial-time".to_string(),
+        vec![
+            NonTerminal("time-hour".to_string()),
+            Terminal(Exact(':')),
+            NonTerminal("time-minute".to_string()),
+            Terminal(Exact(':')),
+            NonTerminal("time-second".to_string()),
+            NonTerminal("[time-secfrac]".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "[time-secfrac]".to_string(),
+        vec![NonTerminal("time-secfrac".to_string())],
+    );
+    grammar.add_rule("[time-secfrac]".to_string(), vec![]);
+    grammar.add_rule(
+        "full-date".to_string(),
+        vec![
+            NonTerminal("date-fullyear".to_string()),
+            Terminal(Exact('-')),
+            NonTerminal("date-month".to_string()),
+            Terminal(Exact('-')),
+            NonTerminal("date-mday".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "full-time".to_string(),
+        vec![
+            NonTerminal("partial-time".to_string()),
+            NonTerminal("time-offset".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "offset-date-time".to_string(),
+        vec![
+            NonTerminal("full-date".to_string()),
+            NonTerminal("time-delim".to_string()),
+            NonTerminal("full-time".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "local-date-time".to_string(),
+        vec![
+            NonTerminal("full-date".to_string()),
+            NonTerminal("time-delim".to_string()),
+            NonTerminal("partial-time".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "local-date".to_string(),
+        vec![NonTerminal("full-date".to_string())],
+    );
+    grammar.add_rule(
+        "local-time".to_string(),
+        vec![NonTerminal("partial-time".to_string())],
+    );
+
+    grammar.add_rule(
+        "integer".to_string(),
+        vec![NonTerminal("dec-int".to_string())],
+    );
+    grammar.add_rule(
+        "integer".to_string(),
+        vec![NonTerminal("hex-int".to_string())],
+    );
+    grammar.add_rule(
+        "integer".to_string(),
+        vec![NonTerminal("oct-int".to_string())],
+    );
+    grammar.add_rule(
+        "integer".to_string(),
+        vec![NonTerminal("bin-int".to_string())],
+    );
+    grammar.add_rule("minus".to_string(), vec![Terminal(Exact('-'))]);
+    grammar.add_rule("plus".to_string(), vec![Terminal(Exact('+'))]);
+    grammar.add_rule("underscore".to_string(), vec![Terminal(Exact('_'))]);
+    grammar.add_rule("digit1-9".to_string(), vec![Terminal(Range('1', '9'))]);
+    grammar.add_rule("digit0-7".to_string(), vec![Terminal(Range('0', '7'))]);
+    grammar.add_rule("digit0-1".to_string(), vec![Terminal(Range('0', '1'))]);
+    grammar.add_rule(
+        "hex-prefix".to_string(),
+        vec![Terminal(Exact('0')), Terminal(Exact('x'))],
+    );
+    grammar.add_rule(
+        "oct-prefix".to_string(),
+        vec![Terminal(Exact('0')), Terminal(Exact('o'))],
+    );
+    grammar.add_rule(
+        "bin-prefix".to_string(),
+        vec![Terminal(Exact('0')), Terminal(Exact('b'))],
+    );
+    grammar.add_rule(
+        "dec-int".to_string(),
+        vec![
+            NonTerminal("sign".to_string()),
+            NonTerminal("unsigned-dec-int".to_string()),
+        ],
+    );
+    grammar.add_rule("sign".to_string(), vec![NonTerminal("minus".to_string())]);
+    grammar.add_rule("sign".to_string(), vec![NonTerminal("plus".to_string())]);
+    grammar.add_rule("sign".to_string(), vec![]);
+    grammar.add_rule(
+        "unsigned-dec-int".to_string(),
+        vec![NonTerminal("DIGIT".to_string())],
+    );
+    grammar.add_rule(
+        "unsigned-dec-int".to_string(),
+        vec![
+            NonTerminal("digit1-9".to_string()),
+            NonTerminal("uns-dec-int-rest".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "uns-dec-int-rest".to_string(),
+        vec![
+            NonTerminal("DIGIT_".to_string()),
+            NonTerminal("uns-dec-int-rest".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "uns-dec-int-rest".to_string(),
+        vec![NonTerminal("DIGIT_".to_string())],
+    );
+    grammar.add_rule("DIGIT_".to_string(), vec![NonTerminal("DIGIT".to_string())]);
+    grammar.add_rule(
+        "DIGIT_".to_string(),
+        vec![
+            NonTerminal("underscore".to_string()),
+            NonTerminal("DIGIT".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "hex-int".to_string(),
+        vec![
+            NonTerminal("hex-prefix".to_string()),
+            NonTerminal("HEXDIG".to_string()),
+            NonTerminal("hex-int-rest".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "hex-int-rest".to_string(),
+        vec![
+            NonTerminal("HEXDIG_".to_string()),
+            NonTerminal("hex-int-rest".to_string()),
+        ],
+    );
+    grammar.add_rule("hex-int-rest".to_string(), vec![]);
+    grammar.add_rule(
+        "HEXDIG_".to_string(),
+        vec![NonTerminal("HEXDIG".to_string())],
+    );
+    grammar.add_rule(
+        "HEXDIG_".to_string(),
+        vec![
+            NonTerminal("underscore".to_string()),
+            NonTerminal("HEXDIG".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "oct-int".to_string(),
+        vec![
+            NonTerminal("oct-prefix".to_string()),
+            NonTerminal("digit0-7".to_string()),
+            NonTerminal("oct-int-rest".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "oct-int-rest".to_string(),
+        vec![
+            NonTerminal("digit0-7_".to_string()),
+            NonTerminal("oct-int-rest".to_string()),
+        ],
+    );
+    grammar.add_rule("oct-int-rest".to_string(), vec![]);
+    grammar.add_rule(
+        "digit0-7_".to_string(),
+        vec![NonTerminal("digit0-7".to_string())],
+    );
+    grammar.add_rule(
+        "digit0-7_".to_string(),
+        vec![
+            NonTerminal("underscore".to_string()),
+            NonTerminal("digit0-7".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "bin-int".to_string(),
+        vec![
+            NonTerminal("bin-prefix".to_string()),
+            NonTerminal("digit0-1".to_string()),
+            NonTerminal("bin-int-rest".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "bin-int-rest".to_string(),
+        vec![
+            NonTerminal("digit0-1_".to_string()),
+            NonTerminal("bin-int-rest".to_string()),
+        ],
+    );
+    grammar.add_rule("bin-int-rest".to_string(), vec![]);
+    grammar.add_rule(
+        "digit0-1_".to_string(),
+        vec![NonTerminal("digit0-1".to_string())],
+    );
+    grammar.add_rule(
+        "digit0-1_".to_string(),
+        vec![
+            NonTerminal("underscore".to_string()),
+            NonTerminal("digit0-1".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "float".to_string(),
+        vec![
+            NonTerminal("float-int-part".to_string()),
+            NonTerminal("float_rest".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "float".to_string(),
+        vec![NonTerminal("special-float".to_string())],
+    );
+    grammar.add_rule(
+        "float_rest".to_string(),
+        vec![NonTerminal("exp".to_string())],
+    );
+    grammar.add_rule(
+        "float_rest".to_string(),
+        vec![
+            NonTerminal("frac".to_string()),
+            NonTerminal("[exp]".to_string()),
+        ],
+    );
+    grammar.add_rule("[exp]".to_string(), vec![NonTerminal("exp".to_string())]);
+    grammar.add_rule("[exp]".to_string(), vec![]);
+    grammar.add_rule(
+        "float-int-part".to_string(),
+        vec![NonTerminal("dec-int".to_string())],
+    );
+    grammar.add_rule(
+        "frac".to_string(),
+        vec![
+            NonTerminal("decimal-point".to_string()),
+            NonTerminal("zero-prefixable-int".to_string()),
+        ],
+    );
+    grammar.add_rule("decimal-point".to_string(), vec![Terminal(Exact('.'))]);
+    grammar.add_rule(
+        "zero-prefixable-int".to_string(),
+        vec![
+            NonTerminal("DIGIT".to_string()),
+            NonTerminal("zero-prefixable-int-rest".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "zero-prefixable-int-rest".to_string(),
+        vec![
+            NonTerminal("DIGIT_".to_string()),
+            NonTerminal("zero-prefixable-int-rest".to_string()),
+        ],
+    );
+    grammar.add_rule("zero-prefixable-int-rest".to_string(), vec![]);
+    grammar.add_rule(
+        "exp".to_string(),
+        vec![
+            Terminal(Exact('e')),
+            NonTerminal("float-exp-part".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "float-exp-part".to_string(),
+        vec![
+            NonTerminal("sign".to_string()),
+            NonTerminal("zero-prefixable-int".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "special-float".to_string(),
+        vec![
+            NonTerminal("sign".to_string()),
+            NonTerminal("inf".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "special-float".to_string(),
+        vec![
+            NonTerminal("sign".to_string()),
+            NonTerminal("nan".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "inf".to_string(),
+        vec![
+            Terminal(Exact('i')),
+            Terminal(Exact('n')),
+            Terminal(Exact('f')),
+        ],
+    );
+    grammar.add_rule(
+        "nan".to_string(),
+        vec![
+            Terminal(Exact('n')),
+            Terminal(Exact('a')),
+            Terminal(Exact('n')),
+        ],
+    );
+    grammar.add_rule("boolean".to_string(), vec![NonTerminal("true".to_string())]);
+    grammar.add_rule(
+        "boolean".to_string(),
+        vec![NonTerminal("false".to_string())],
+    );
+    grammar.add_rule(
+        "true   ".to_string(),
+        vec![
+            Terminal(Exact('t')),
+            Terminal(Exact('r')),
+            Terminal(Exact('u')),
+            Terminal(Exact('e')),
+        ],
+    );
+    grammar.add_rule(
+        "false  ".to_string(),
+        vec![
+            Terminal(Exact('f')),
+            Terminal(Exact('a')),
+            Terminal(Exact('l')),
+            Terminal(Exact('s')),
+            Terminal(Exact('e')),
+        ],
+    );
+
+    grammar.add_rule(
+        "string".to_string(),
+        vec![NonTerminal("ml-basic-string".to_string())],
+    );
+    grammar.add_rule(
+        "string".to_string(),
+        vec![NonTerminal("basic-string".to_string())],
+    );
+    grammar.add_rule(
+        "string".to_string(),
+        vec![NonTerminal("ml-literal-string".to_string())],
+    );
+    grammar.add_rule(
+        "string".to_string(),
+        vec![NonTerminal("literal-string".to_string())],
+    );
+    grammar.add_rule(
+        "basic-string".to_string(),
+        vec![
+            NonTerminal("quotation-mark".to_string()),
+            NonTerminal("basic-chars".to_string()),
+            NonTerminal("quotation-mark".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "basic-chars".to_string(),
+        vec![
+            NonTerminal("basic-char".to_string()),
+            NonTerminal("basic-chars".to_string()),
+        ],
+    );
+    grammar.add_rule("basic-chars".to_string(), vec![]);
+    grammar.add_rule("quotation-mark".to_string(), vec![Terminal(Exact('"'))]);
+    grammar.add_rule(
+        "basic-char".to_string(),
+        vec![NonTerminal("basic-unescaped".to_string())],
+    );
+    grammar.add_rule(
+        "basic-char".to_string(),
+        vec![NonTerminal("escaped".to_string())],
+    );
+    grammar.add_rule(
+        "basic-unescaped".to_string(),
+        vec![NonTerminal("wschar".to_string())],
+    );
+    grammar.add_rule("basic-unescaped".to_string(), vec![Terminal(Exact('!'))]);
+    grammar.add_rule(
+        "basic-unescaped".to_string(),
+        vec![Terminal(Range('\x23', '\x5B'))],
+    );
+    grammar.add_rule(
+        "basic-unescaped".to_string(),
+        vec![Terminal(Range('\x5D', '\x7E'))],
+    );
+    grammar.add_rule(
+        "basic-unescaped".to_string(),
+        vec![NonTerminal("non-ascii".to_string())],
+    );
+    grammar.add_rule(
+        "escaped".to_string(),
+        vec![
+            NonTerminal("escape".to_string()),
+            NonTerminal("escape-seq-char".to_string()),
+        ],
+    );
+    grammar.add_rule("escape".to_string(), vec![Terminal(Exact('\\'))]);
+    grammar.add_rule("escape-seq-char".to_string(), vec![Terminal(Exact('\x22'))]);
+    grammar.add_rule("escape-seq-char".to_string(), vec![Terminal(Exact('\x5C'))]);
+    grammar.add_rule("escape-seq-char".to_string(), vec![Terminal(Exact('\x62'))]);
+    grammar.add_rule("escape-seq-char".to_string(), vec![Terminal(Exact('\x66'))]);
+    grammar.add_rule("escape-seq-char".to_string(), vec![Terminal(Exact('\x6E'))]);
+    grammar.add_rule("escape-seq-char".to_string(), vec![Terminal(Exact('\x72'))]);
+    grammar.add_rule("escape-seq-char".to_string(), vec![Terminal(Exact('\x74'))]);
+    grammar.add_rule(
+        "escape-seq-char".to_string(),
+        vec![Terminal(Exact('\x75')), NonTerminal("4HEXDIG".to_string())],
+    );
+    grammar.add_rule(
+        "escape-seq-char".to_string(),
+        vec![Terminal(Exact('\x55')), NonTerminal("8HEXDIG".to_string())],
+    );
+    grammar.add_rule(
+        "ml-basic-string".to_string(),
+        vec![
+            NonTerminal("ml-basic-string-delim".to_string()),
+            NonTerminal("ml-basic-body".to_string()),
+            NonTerminal("ml-basic-string-delim".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "ml-basic-string-delim".to_string(),
+        vec![
+            NonTerminal("quotation-mark".to_string()),
+            NonTerminal("quotation-mark".to_string()),
+            NonTerminal("quotation-mark".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "ml-basic-body".to_string(),
+        vec![
+            NonTerminal("*mlb-content".to_string()),
+            NonTerminal("mlb-quotes-content".to_string()),
+            NonTerminal("[mlb-quotes]".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "[mlb-quotes]".to_string(),
+        vec![NonTerminal("mlb-quotes".to_string())],
+    );
+    grammar.add_rule("[mlb-quotes]".to_string(), vec![]);
+    grammar.add_rule(
+        "1*mlb-content".to_string(),
+        vec![
+            NonTerminal("mlb-content".to_string()),
+            NonTerminal("1*mlb-content".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "1*mlb-content".to_string(),
+        vec![NonTerminal("mlb-content".to_string())],
+    );
+    grammar.add_rule(
+        "mlb-quotes-content".to_string(),
+        vec![
+            NonTerminal("mlb-quotes".to_string()),
+            NonTerminal("1*mlb-content".to_string()),
+            NonTerminal("mlb-quotes-content".to_string()),
+        ],
+    );
+    grammar.add_rule("mlb-quotes-content".to_string(), vec![]);
+    grammar.add_rule(
+        "*mlb-content".to_string(),
+        vec![
+            NonTerminal("mlb-content".to_string()),
+            NonTerminal("*mlb-content".to_string()),
+        ],
+    );
+    grammar.add_rule("*mlb-content".to_string(), vec![]);
+    grammar.add_rule(
+        "mlb-content".to_string(),
+        vec![NonTerminal("mlb-char".to_string())],
+    );
+    grammar.add_rule(
+        "mlb-content".to_string(),
+        vec![NonTerminal("newline".to_string())],
+    );
+    grammar.add_rule(
+        "mlb-content".to_string(),
+        vec![NonTerminal("mlb-escaped-nl".to_string())],
+    );
+    grammar.add_rule(
+        "mlb-char".to_string(),
+        vec![NonTerminal("mlb-unescaped".to_string())],
+    );
+    grammar.add_rule(
+        "mlb-char".to_string(),
+        vec![NonTerminal("escaped".to_string())],
+    );
+    grammar.add_rule(
+        "mlb-quotes".to_string(),
+        vec![NonTerminal("1*2quotation-mark".to_string())],
+    );
+    grammar.add_rule(
+        "mlb-unescaped".to_string(),
+        vec![NonTerminal("wschar".to_string())],
+    );
+    grammar.add_rule("mlb-unescaped".to_string(), vec![Terminal(Exact('!'))]);
+    grammar.add_rule(
+        "mlb-unescaped".to_string(),
+        vec![Terminal(Range('\x23', '\x5B'))],
+    );
+    grammar.add_rule(
+        "mlb-unescaped".to_string(),
+        vec![Terminal(Range('\x5D', '\x7E'))],
+    );
+    grammar.add_rule(
+        "mlb-unescaped".to_string(),
+        vec![NonTerminal("non-ascii".to_string())],
+    );
+    grammar.add_rule(
+        "mlb-escaped-nl".to_string(),
+        vec![
+            NonTerminal("escape".to_string()),
+            NonTerminal("ws".to_string()),
+            NonTerminal("newline".to_string()),
+            NonTerminal("wschar-nls".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "wschar-nl".to_string(),
+        vec![NonTerminal("wschar".to_string())],
+    );
+    grammar.add_rule(
+        "wschar-nl".to_string(),
+        vec![NonTerminal("newline".to_string())],
+    );
+    grammar.add_rule(
+        "wschar-nls".to_string(),
+        vec![
+            NonTerminal("wschar-nl".to_string()),
+            NonTerminal("wschar-nls".to_string()),
+        ],
+    );
+    grammar.add_rule("wschar-nls".to_string(), vec![]);
+    grammar.add_rule(
+        "1*2quotation-mark".to_string(),
+        vec![Terminal(Exact('"')), Terminal(Exact('"'))],
+    );
+    grammar.add_rule("1*2quotation-mark".to_string(), vec![Terminal(Exact('"'))]);
+    grammar.add_rule(
+        "literal-string".to_string(),
+        vec![
+            NonTerminal("apostrophe".to_string()),
+            NonTerminal("*literal-char".to_string()),
+            NonTerminal("apostrophe".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "*literal-char".to_string(),
+        vec![
+            NonTerminal("literal-char".to_string()),
+            NonTerminal("*literal-char".to_string()),
+        ],
+    );
+    grammar.add_rule("*literal-char".to_string(), vec![]);
+    grammar.add_rule("apostrophe".to_string(), vec![Terminal(Exact('\''))]);
+    grammar.add_rule("literal-char".to_string(), vec![Terminal(Exact('\x09'))]);
+    grammar.add_rule(
+        "literal-char".to_string(),
+        vec![Terminal(Range('\x20', '\x26'))],
+    );
+    grammar.add_rule(
+        "literal-char".to_string(),
+        vec![Terminal(Range('\x28', '\x7E'))],
+    );
+    grammar.add_rule(
+        "literal-char".to_string(),
+        vec![NonTerminal("non-ascii".to_string())],
+    );
+    grammar.add_rule(
+        "ml-literal-string".to_string(),
+        vec![
+            NonTerminal("ml-literal-string-delim".to_string()),
+            NonTerminal("ml-literal-body".to_string()),
+            NonTerminal("ml-literal-string-delim".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "ml-literal-string-delim".to_string(),
+        vec![NonTerminal("3apostrophe".to_string())],
+    );
+    grammar.add_rule(
+        "ml-literal-body".to_string(),
+        vec![
+            NonTerminal("*mll-content".to_string()),
+            NonTerminal("some_mll-quotes-content".to_string()),
+            NonTerminal("[mll-quotes]".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "3apostrophe".to_string(),
+        vec![
+            NonTerminal("apostrophe".to_string()),
+            NonTerminal("apostrophe".to_string()),
+            NonTerminal("apostrophe".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "*mll-content".to_string(),
+        vec![
+            NonTerminal("mll-content".to_string()),
+            NonTerminal("*mll-content".to_string()),
+        ],
+    );
+    grammar.add_rule("*mll-content".to_string(), vec![]);
+    grammar.add_rule(
+        "1*mll-content".to_string(),
+        vec![
+            NonTerminal("mll-content".to_string()),
+            NonTerminal("1*mll-content".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "1*mll-content".to_string(),
+        vec![NonTerminal("mll-content".to_string())],
+    );
+    grammar.add_rule(
+        "[mll-quotes]".to_string(),
+        vec![NonTerminal("mll-quotes".to_string())],
+    );
+    grammar.add_rule("[mll-quotes]".to_string(), vec![]);
+    grammar.add_rule(
+        "some_mll-quotes-content".to_string(),
+        vec![
+            NonTerminal("mll-quotes".to_string()),
+            NonTerminal("1*mll-content".to_string()),
+            NonTerminal("some_mll-quotes-content".to_string()),
+        ],
+    );
+    grammar.add_rule("some_mll-quotes-content".to_string(), vec![]);
+    grammar.add_rule(
+        "mll-content".to_string(),
+        vec![NonTerminal("mll-char".to_string())],
+    );
+    grammar.add_rule(
+        "mll-content".to_string(),
+        vec![NonTerminal("newline".to_string())],
+    );
+    grammar.add_rule("mll-char".to_string(), vec![Terminal(Exact('\x09'))]);
+    grammar.add_rule(
+        "mll-char".to_string(),
+        vec![Terminal(Range('\x20', '\x26'))],
+    );
+    grammar.add_rule(
+        "mll-char".to_string(),
+        vec![Terminal(Range('\x28', '\x7E'))],
+    );
+    grammar.add_rule(
+        "mll-char".to_string(),
+        vec![NonTerminal("non-ascii".to_string())],
+    );
+    grammar.add_rule(
+        "mll-quotes".to_string(),
+        vec![NonTerminal("apostrophe".to_string())],
+    );
+    grammar.add_rule(
+        "mll-quotes".to_string(),
+        vec![
+            NonTerminal("apostrophe".to_string()),
+            NonTerminal("apostrophe".to_string()),
+        ],
+    );
+
+    grammar.add_rule(
+        "toml".to_string(),
+        vec![NonTerminal("expression".to_string())],
+    );
+    grammar.add_rule(
+        "toml".to_string(),
+        vec![
+            NonTerminal("expression".to_string()),
+            NonTerminal("expressions".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "expressions".to_string(),
+        vec![
+            NonTerminal("newline".to_string()),
+            NonTerminal("expression".to_string()),
+            NonTerminal("expressions".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "expressions".to_string(),
+        vec![NonTerminal("newline".to_string())],
+    );
+    grammar.add_rule(
+        "expression".to_string(),
+        vec![
+            NonTerminal("ws".to_string()),
+            NonTerminal("maybe_comment".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "expression".to_string(),
+        vec![
+            NonTerminal("ws".to_string()),
+            NonTerminal("keyval".to_string()),
+            NonTerminal("ws".to_string()),
+            NonTerminal("maybe_comment".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "expression".to_string(),
+        vec![
+            NonTerminal("ws".to_string()),
+            NonTerminal("table".to_string()),
+            NonTerminal("ws".to_string()),
+            NonTerminal("maybe_comment".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "keyval".to_string(),
+        vec![
+            NonTerminal("key".to_string()),
+            NonTerminal("keyval-sep".to_string()),
+            NonTerminal("val".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "key".to_string(),
+        vec![NonTerminal("simple-key".to_string())],
+    );
+    grammar.add_rule(
+        "key".to_string(),
+        vec![NonTerminal("dotted-key".to_string())],
+    );
+    grammar.add_rule(
+        "simple-key".to_string(),
+        vec![NonTerminal("quoted-key".to_string())],
+    );
+    grammar.add_rule(
+        "simple-key".to_string(),
+        vec![NonTerminal("unquoted-key".to_string())],
+    );
+    grammar.add_rule(
+        "unquoted-key".to_string(),
+        vec![
+            NonTerminal("unquoted-key-char".to_string()),
+            NonTerminal("unquoted-key".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "unquoted-key".to_string(),
+        vec![NonTerminal("unquoted-key-char".to_string())],
+    );
+    grammar.add_rule(
+        "unquoted-key-char".to_string(),
+        vec![NonTerminal("ALPHA".to_string())],
+    );
+    grammar.add_rule(
+        "unquoted-key-char".to_string(),
+        vec![NonTerminal("DIGIT".to_string())],
+    );
+    grammar.add_rule(
+        "unquoted-key-char".to_string(),
+        vec![Terminal(Exact('\x2D'))],
+    );
+    grammar.add_rule(
+        "unquoted-key-char".to_string(),
+        vec![Terminal(Exact('\x5F'))],
+    );
+    grammar.add_rule(
+        "quoted-key".to_string(),
+        vec![NonTerminal("basic-string".to_string())],
+    );
+    grammar.add_rule(
+        "quoted-key".to_string(),
+        vec![NonTerminal("literal-string".to_string())],
+    );
+    grammar.add_rule(
+        "dotted-key".to_string(),
+        vec![
+            NonTerminal("simple-key".to_string()),
+            NonTerminal("dotted-key-rest".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "dotted-key-rest".to_string(),
+        vec![
+            NonTerminal("dot-sep".to_string()),
+            NonTerminal("simple-key".to_string()),
+            NonTerminal("dotted-key-rest".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "dotted-key-rest".to_string(),
+        vec![
+            NonTerminal("dot-sep".to_string()),
+            NonTerminal("simple-key".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "dot-sep  ".to_string(),
+        vec![
+            NonTerminal("ws".to_string()),
+            Terminal(Exact('.')),
+            NonTerminal("ws".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "keyval-sep".to_string(),
+        vec![
+            NonTerminal("ws".to_string()),
+            Terminal(Exact('=')),
+            NonTerminal("ws".to_string()),
+        ],
+    );
+    grammar.add_rule("val".to_string(), vec![NonTerminal("string".to_string())]);
+    grammar.add_rule("val".to_string(), vec![NonTerminal("boolean".to_string())]);
+    grammar.add_rule("val".to_string(), vec![NonTerminal("array".to_string())]);
+    grammar.add_rule(
+        "val".to_string(),
+        vec![NonTerminal("inline-table".to_string())],
+    );
+    grammar.add_rule(
+        "val".to_string(),
+        vec![NonTerminal("date-time".to_string())],
+    );
+    grammar.add_rule("val".to_string(), vec![NonTerminal("float".to_string())]);
+    grammar.add_rule("val".to_string(), vec![NonTerminal("integer".to_string())]);
 
     grammar
         .compile()
