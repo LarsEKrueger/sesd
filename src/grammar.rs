@@ -36,9 +36,9 @@ use itertools::Itertools;
 #[derive(Debug)]
 pub enum Error {
     /// Too many entries to compile
-    TooLarge,
+    TooLarge(String),
     /// Non-terminal used in a rule without a rule for it
-    NoRule,
+    NoRule(String),
     /// No start symbol set
     EmptyStart,
     /// Empty string used in a rule
@@ -60,6 +60,7 @@ pub trait Matcher<T> {
 /// Grammar Symbols
 ///
 /// The terminal symbols hold matcher instances to match against the input tokens of type `T`.
+#[derive(Debug)]
 pub enum Symbol<M> {
     /// Terminals are of the same type as in the Buffer struct.
     Terminal(M),
@@ -76,9 +77,11 @@ pub enum Symbol<M> {
 /// parser or a fairly small set of terminal symbols. This needs to be changed later.
 ///
 /// TODO: Cope with character classes/sets natively.
+#[derive(Debug)]
 pub struct Grammar<T, M>
 where
-    M: Matcher<T>,
+    M: Matcher<T> + std::fmt::Debug,
+    T: std::fmt::Debug,
 {
     /// Rule table, (lhs, rhs)
     rules: Vec<(String, Vec<Symbol<M>>)>,
@@ -169,7 +172,8 @@ fn update_symbol(
 
 impl<T, M> Grammar<T, M>
 where
-    M: Matcher<T> + Hash + Ord + Clone,
+    M: Matcher<T> + Hash + Ord + Clone + std::fmt::Debug,
+    T: std::fmt::Debug,
 {
     pub fn new() -> Self {
         Self {
@@ -217,7 +221,7 @@ where
             update_symbol(&mut symbol_set, lhs.clone(), true, &mut next_symbol_id);
             // The index into the rhs can grow to the full length (i.e. past the last entry).
             if r.1.len() >= (MAX_SYMBOL_ID as usize) {
-                return Err(Error::TooLarge);
+                return Err(Error::TooLarge(lhs.clone()));
             }
             // TODO: Reject if left recursive rule
             for s in r.1.iter() {
@@ -236,9 +240,9 @@ where
         }
 
         // Check if all symbols have rules
-        for (has_rule, _) in symbol_set.values() {
+        for (sym, (has_rule, _)) in symbol_set.iter() {
             if !has_rule {
-                return Err(Error::NoRule);
+                return Err(Error::NoRule(sym.clone()));
             }
         }
 
@@ -250,7 +254,7 @@ where
             .map(|x| x.0.clone())
             .collect();
         if nonterminal_table.len() > (MAX_SYMBOL_ID as usize) {
-            return Err(Error::TooLarge);
+            return Err(Error::TooLarge("Terminals".to_string()));
         }
 
         // Build the terminal table
@@ -260,7 +264,9 @@ where
             .map(|x| (*x).clone())
             .collect();
         if terminal_table.len() + nonterminal_table.len() > (MAX_SYMBOL_ID as usize) {
-            return Err(Error::TooLarge);
+            return Err(Error::TooLarge(
+                "Terminals and NonTerminals together".to_string(),
+            ));
         }
 
         // Build the rules
