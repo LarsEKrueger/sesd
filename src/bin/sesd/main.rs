@@ -28,7 +28,7 @@ use std::io::Read;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 
-use pancurses::{endwin, initscr, noecho, Input};
+use pancurses::{endwin, initscr, noecho, Input, Window};
 use structopt::StructOpt;
 
 use sesd::{CharMatcher, SyncBlock};
@@ -52,6 +52,17 @@ struct App {
 
     /// Last error message
     error: String,
+}
+
+enum AppCmd {
+    /// Nothing to do.
+    Nothing,
+
+    /// Quit the app
+    Quit,
+
+    /// Redisplay the app. This copies the window to the terminal.
+    Display,
 }
 
 impl App {
@@ -92,6 +103,16 @@ impl App {
         let res = self.load_input_internal(cmd_line);
         self.set_error(res);
     }
+
+    /// Process the input character
+    ///
+    /// Return true if a redraw is needed
+    fn handle_input(&mut self, ch: Input) -> AppCmd {
+        AppCmd::Nothing
+    }
+
+    /// Display the current state of the app to the window
+    fn display(&self, win: &Window) {}
 }
 
 fn main() {
@@ -106,21 +127,27 @@ fn main() {
     // Load the file in the buffer if it exists
     app.load_input(&cmd_line);
 
+    pancurses::set_title(&format!("{} -- sesd", cmd_line.input.to_string_lossy()));
+
     let win = initscr();
 
     noecho();
 
+    app.display(&win);
+    win.refresh();
+
     loop {
-        win.refresh();
-        match win.getch() {
-            Some(Input::Character(c)) => {
-                win.addch(c);
+        if let Some(input) = win.getch() {
+            match app.handle_input(input) {
+                AppCmd::Nothing => {
+                    // Don't do anything
+                }
+                AppCmd::Quit => break,
+                AppCmd::Display => {
+                    app.display(&win);
+                    win.refresh();
+                }
             }
-            Some(Input::KeyDC) => break,
-            Some(input) => {
-                win.addstr(&format!("{:?}", input));
-            }
-            None => (),
         }
     }
 
