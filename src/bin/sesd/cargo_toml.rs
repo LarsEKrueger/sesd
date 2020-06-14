@@ -30,9 +30,20 @@
 use sesd::{CharMatcher, CompiledGrammar, Grammar, Symbol};
 
 pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
-    let mut grammar = Grammar::<char, CharMatcher>::new();
+    let mut grammar = grammar_nostart();
 
     grammar.set_start("toml".to_string());
+
+    grammar
+        .compile()
+        .expect("compiling built-in grammar should not fail")
+}
+
+/// Internal function to support testing
+///
+/// No start symbol is set, thus sub-rules can be tested.
+fn grammar_nostart() -> Grammar<char, CharMatcher> {
+    let mut grammar = Grammar::<char, CharMatcher>::new();
 
     use CharMatcher::*;
     use Symbol::*;
@@ -43,6 +54,22 @@ pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
     grammar.add_rule("HEXDIG".to_string(), vec![NonTerminal("DIGIT".to_string())]);
     grammar.add_rule("HEXDIG".to_string(), vec![Terminal(Range('A', 'F'))]);
     grammar.add_rule("HEXDIG".to_string(), vec![Terminal(Range('a', 'f'))]);
+    grammar.add_rule(
+        "4HEXDIG".to_string(),
+        vec![
+            NonTerminal("HEXDIG".to_string()),
+            NonTerminal("HEXDIG".to_string()),
+            NonTerminal("HEXDIG".to_string()),
+            NonTerminal("HEXDIG".to_string()),
+        ],
+    );
+    grammar.add_rule(
+        "8HEXDIG".to_string(),
+        vec![
+            NonTerminal("4HEXDIG".to_string()),
+            NonTerminal("4HEXDIG".to_string()),
+        ],
+    );
 
     grammar.add_rule(
         "ws".to_string(),
@@ -116,7 +143,7 @@ pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
         ],
     );
     grammar.add_rule(
-        "std-table-open ".to_string(),
+        "std-table-open".to_string(),
         vec![Terminal(Exact('[')), NonTerminal("ws".to_string())],
     );
     grammar.add_rule(
@@ -132,7 +159,7 @@ pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
         ],
     );
     grammar.add_rule(
-        "inline-table-open ".to_string(),
+        "inline-table-open".to_string(),
         vec![Terminal(Exact('{')), NonTerminal("ws".to_string())],
     );
     grammar.add_rule(
@@ -140,7 +167,7 @@ pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
         vec![NonTerminal("ws".to_string()), Terminal(Exact('}'))],
     );
     grammar.add_rule(
-        "inline-table-sep  ".to_string(),
+        "inline-table-sep".to_string(),
         vec![
             NonTerminal("ws".to_string()),
             Terminal(Exact(',')),
@@ -176,7 +203,7 @@ pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
         ],
     );
     grammar.add_rule(
-        "array-table-open ".to_string(),
+        "array-table-open".to_string(),
         vec![
             Terminal(Exact('[')),
             Terminal(Exact('[')),
@@ -656,7 +683,7 @@ pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
         vec![NonTerminal("false".to_string())],
     );
     grammar.add_rule(
-        "true   ".to_string(),
+        "true".to_string(),
         vec![
             Terminal(Exact('t')),
             Terminal(Exact('r')),
@@ -665,7 +692,7 @@ pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
         ],
     );
     grammar.add_rule(
-        "false  ".to_string(),
+        "false".to_string(),
         vec![
             Terminal(Exact('f')),
             Terminal(Exact('a')),
@@ -752,6 +779,7 @@ pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
         "escape-seq-char".to_string(),
         vec![Terminal(Exact('\x75')), NonTerminal("4HEXDIG".to_string())],
     );
+
     grammar.add_rule(
         "escape-seq-char".to_string(),
         vec![Terminal(Exact('\x55')), NonTerminal("8HEXDIG".to_string())],
@@ -1138,7 +1166,7 @@ pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
         ],
     );
     grammar.add_rule(
-        "dot-sep  ".to_string(),
+        "dot-sep".to_string(),
         vec![
             NonTerminal("ws".to_string()),
             Terminal(Exact('.')),
@@ -1168,6 +1196,21 @@ pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
     grammar.add_rule("val".to_string(), vec![NonTerminal("integer".to_string())]);
 
     grammar
-        .compile()
-        .expect("compiling built-in grammar should not fail")
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    #[test]
+    fn comment() {
+        let mut grammar = grammar_nostart();
+
+        grammar.set_start("comment".to_string());
+        let grammar = grammar.compile();
+        assert!(grammar.is_ok());
+
+        let grammar = grammar.unwrap();
+    }
+
 }
