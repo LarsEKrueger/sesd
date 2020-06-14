@@ -115,6 +115,10 @@ outlined below. It will ensure that your bug can be reproduced and addressed.
 
 # Roadmap
 
+The roadmap is defined in terms of features of the [demo
+program](src/bin/sesd/readme.md). This directly corresponds to the library
+features that implement them.
+
 * [ ] 0.1 - Simple syntax directed editor
     * One, compiled-in language
 * [ ] 0.2 - General syntax directed editor
