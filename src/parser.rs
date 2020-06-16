@@ -112,6 +112,29 @@ pub enum Verdict {
     Reject,
 }
 
+/// One point in a CST path
+pub struct CstPathNode {
+    /// Index into buffer
+    index: usize,
+    /// Index into CST list at that entry
+    entry: SymbolId,
+}
+
+/// Path from root of parse tree to current node
+pub struct CstPath(Vec<CstPathNode>);
+
+/// One node in the parse tree as returned by the iterator
+pub struct CstIterItem {
+    pub start: usize,
+    pub end: usize,
+    pub path: CstPath,
+}
+
+/// Iterator to access the parse tree in sequential order
+///
+/// The items are traversed in pre-order.
+pub struct CstIter {}
+
 fn add_to_state_list(state_list: &mut StateList, entry: ChartEntry) -> SymbolId {
     for (i, e) in state_list.iter().enumerate() {
         if *e == entry {
@@ -402,6 +425,18 @@ where
         } else {
             Verdict::More
         })
+    }
+
+    pub fn cst_iter(&self) -> CstIter {
+        CstIter {}
+    }
+}
+
+impl Iterator for CstIter {
+    type Item = CstIterItem;
+
+    fn next(&mut self) -> Option<CstIterItem> {
+        None
     }
 }
 

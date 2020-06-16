@@ -117,6 +117,10 @@ impl<T> Buffer<T> {
     pub fn cursor(&self) -> usize {
         self.cursor
     }
+
+    pub fn span<'a>(&'a self, start: usize, end: usize) -> &[T] {
+        &self.tokens[start..end]
+    }
 }
 
 impl<T> Buffer<T>

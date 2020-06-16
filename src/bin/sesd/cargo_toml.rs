@@ -29,6 +29,9 @@
 
 use sesd::{CharMatcher, CompiledGrammar, Grammar, Symbol};
 
+use super::style_sheet::{Style, StyleSheet};
+
+/// Build the grammar for TOML files
 pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
     let mut grammar = grammar_nostart();
 
@@ -37,6 +40,11 @@ pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
     grammar
         .compile()
         .expect("compiling built-in grammar should not fail")
+}
+
+/// Build the style sheet for Cargo.toml files
+pub fn style_sheet() -> StyleSheet {
+    StyleSheet::new(Style::none())
 }
 
 /// Internal function to support testing

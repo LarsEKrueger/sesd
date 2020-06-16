@@ -34,6 +34,7 @@ use structopt::StructOpt;
 use sesd::{CharMatcher, SyncBlock};
 
 mod cargo_toml;
+mod style_sheet;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "sesd", about = "Syntax directed text editor")]
@@ -45,10 +46,33 @@ struct CommandLine {
 
 type Block = SyncBlock<char, CharMatcher>;
 
+/// Syntactical element to be displayed
+struct SynElement {
+    attr: pancurses::Attributes,
+    text: String,
+}
+
 /// All state of the edit app
 struct App {
     /// Editable block of text in memory
     block: Block,
+
+    /// Style sheet
+    style_sheet: style_sheet::StyleSheet,
+
+    /// Cache for rendering syntax items
+    ///
+    /// Outer dimension is per line, inner dimension is a syntactical element.
+    document: Vec<Vec<SynElement>>,
+
+    /// Cursor position in the document: line
+    cursor_doc_line: usize,
+
+    /// Cursor position on the screen: line
+    cursor_win_line: usize,
+
+    /// Cursor positon in the document and on screen
+    cursor_col: usize,
 
     /// Last error message
     error: String,
@@ -111,8 +135,61 @@ impl App {
         AppCmd::Nothing
     }
 
+    /// Update the cached syntax tree
+    fn update_document(&mut self, width: usize) {
+        self.document.clear();
+
+        let mut line_nr = 0;
+        let mut line_len = 0;
+        let mut cst_iter = self.block.cst_iter();
+        for cst_node in cst_iter {
+            if line_nr == self.document.len() {
+                self.document.push(Vec::new());
+            }
+            let style = self.style_sheet.lookup(&cst_node.path);
+            let text = self.block.span_string(cst_node.start, cst_node.end);
+            line_len += text.len();
+            if style.line_break_before || line_len > width {
+                line_nr += 1;
+                self.document.push(Vec::new());
+                line_len = text.len();
+            }
+            self.document[line_nr].push(SynElement {
+                attr: style.attr,
+                text,
+            });
+            if style.line_break_after {
+                line_nr += 1;
+                self.document.push(Vec::new());
+                line_len = 0;
+            }
+        }
+    }
+
     /// Display the current state of the app to the window
-    fn display(&self, win: &Window) {}
+    fn display(&self, win: &Window) {
+        // First document line to display
+        let start_doc_line = self.cursor_doc_line - self.cursor_win_line;
+        win.clear();
+        let win_height = win.get_max_y() as usize;
+        let display_height = win_height - 1;
+        for win_line in 0..display_height {
+            if win_line + start_doc_line < self.document.len() {
+                win.mv(win_line as i32, 0);
+
+                for elem in self.document[start_doc_line + win_line].iter() {
+                    win.attrset(elem.attr);
+                    win.addstr(&elem.text);
+                }
+            } else {
+                break;
+            }
+        }
+        win.attron(pancurses::A_REVERSE);
+        win.mvaddnstr(display_height as i32, 0, &self.error, win.get_max_x());
+        win.attroff(pancurses::A_REVERSE);
+        win.mv(self.cursor_win_line as i32, self.cursor_col as i32);
+    }
 }
 
 fn main() {
@@ -122,17 +199,22 @@ fn main() {
     let mut app = App {
         block: Block::new(cargo_toml::grammar()),
         error: String::new(),
+        document: Vec::new(),
+        style_sheet: cargo_toml::style_sheet(),
+        cursor_doc_line: 0,
+        cursor_win_line: 0,
+        cursor_col: 0,
     };
 
     // Load the file in the buffer if it exists
     app.load_input(&cmd_line);
-
     pancurses::set_title(&format!("{} -- sesd", cmd_line.input.to_string_lossy()));
 
     let win = initscr();
-
     noecho();
+    win.keypad(true);
 
+    app.update_document(win.get_max_x() as usize);
     app.display(&win);
     win.refresh();
 

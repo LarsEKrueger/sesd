@@ -33,6 +33,7 @@ pub use self::char::CharMatcher;
 use buffer::Buffer;
 pub use grammar::{CompiledGrammar, Grammar, Matcher, Symbol};
 use parser::Parser;
+pub use parser::{CstIter, CstPath};
 
 /// Editor Block with Synchronous Parsing
 pub struct SyncBlock<T, M>
@@ -81,5 +82,19 @@ where
 
     pub fn move_start(&mut self) {
         self.buffer.move_start();
+    }
+
+    pub fn cst_iter(&self) -> CstIter {
+        self.parser.cst_iter()
+    }
+}
+
+impl<M> SyncBlock<char, M>
+where
+    M: Matcher<char>,
+{
+    pub fn span_string(&self, start: usize, end: usize) -> String {
+        use std::iter::FromIterator;
+        String::from_iter(self.buffer.span(start, end).iter())
     }
 }
