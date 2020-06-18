@@ -31,7 +31,7 @@ use std::path::PathBuf;
 use pancurses::{endwin, initscr, noecho, Input, Window};
 use structopt::StructOpt;
 
-use sesd::{CharMatcher, SyncBlock};
+use sesd::{CharMatcher, CstIterItem, SyncBlock};
 
 mod cargo_toml;
 mod style_sheet;
@@ -143,25 +143,30 @@ impl App {
         let mut line_len = 0;
         let mut cst_iter = self.block.cst_iter();
         for cst_node in cst_iter {
-            if line_nr == self.document.len() {
-                self.document.push(Vec::new());
-            }
-            let style = self.style_sheet.lookup(&cst_node.path);
-            let text = self.block.span_string(cst_node.start, cst_node.end);
-            line_len += text.len();
-            if style.line_break_before || line_len > width {
-                line_nr += 1;
-                self.document.push(Vec::new());
-                line_len = text.len();
-            }
-            self.document[line_nr].push(SynElement {
-                attr: style.attr,
-                text,
-            });
-            if style.line_break_after {
-                line_nr += 1;
-                self.document.push(Vec::new());
-                line_len = 0;
+            match cst_node {
+                CstIterItem::Parsed(cst_node) => {
+                    if line_nr == self.document.len() {
+                        self.document.push(Vec::new());
+                    }
+                    let style = self.style_sheet.lookup(&cst_node.path);
+                    let text = self.block.span_string(cst_node.start, cst_node.end);
+                    line_len += text.len();
+                    if style.line_break_before || line_len > width {
+                        line_nr += 1;
+                        self.document.push(Vec::new());
+                        line_len = text.len();
+                    }
+                    self.document[line_nr].push(SynElement {
+                        attr: style.attr,
+                        text,
+                    });
+                    if style.line_break_after {
+                        line_nr += 1;
+                        self.document.push(Vec::new());
+                        line_len = 0;
+                    }
+                }
+                CstIterItem::Unparsed(unparsed) => {}
             }
         }
     }

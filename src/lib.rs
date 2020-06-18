@@ -33,7 +33,7 @@ pub use self::char::CharMatcher;
 use buffer::Buffer;
 pub use grammar::{CompiledGrammar, Grammar, Matcher, Symbol};
 use parser::Parser;
-pub use parser::{CstIter, CstPath};
+pub use parser::{CstIter, CstIterItem, CstPath};
 
 /// Editor Block with Synchronous Parsing
 pub struct SyncBlock<T, M>

@@ -25,6 +25,9 @@ The parse tree is traversed in pre-order. If a rule in the style sheet matches,
 it is used to influence the rendering. If nothing matches, the text is
 displayed as-is.
 
+If the parse tree does not cover the whole length of the buffer, the remaining
+text will be displayed without consulting the style sheet.
+
 ### Error Handling
 
 If the input buffer cannot be parsed, the style sheet is used to select the

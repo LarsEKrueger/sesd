@@ -124,16 +124,33 @@ pub struct CstPathNode {
 pub struct CstPath(Vec<CstPathNode>);
 
 /// One node in the parse tree as returned by the iterator
-pub struct CstIterItem {
+pub struct CstIterItemNode {
     pub start: usize,
     pub end: usize,
     pub path: CstPath,
 }
 
+pub enum CstIterItem {
+    /// Beginning at this index, the buffer has not been parsed
+    Unparsed(usize),
+
+    /// A node of the parse tree
+    Parsed(CstIterItemNode),
+}
+
 /// Iterator to access the parse tree in sequential order
 ///
 /// The items are traversed in pre-order.
-pub struct CstIter {}
+pub struct CstIter {
+    /// Graph nodes to be visited.
+    stack: Vec<CstPathNode>,
+
+    /// Index of the first unparsed token
+    unparsed: usize,
+
+    /// State: Has unparsed been returned
+    done: bool,
+}
 
 fn add_to_state_list(state_list: &mut StateList, entry: ChartEntry) -> SymbolId {
     for (i, e) in state_list.iter().enumerate() {
@@ -428,7 +445,41 @@ where
     }
 
     pub fn cst_iter(&self) -> CstIter {
-        CstIter {}
+        // Collect all the entries that complete a start symbol. Search backwards from the last
+        // entry.
+        let mut stack = Vec::new();
+
+        debug_assert!(self.valid_entries < self.chart.len());
+        debug_assert!(self.valid_entries < self.cst.len());
+        debug_assert!(self.chart.len() == self.cst.len());
+        let mut index = self.valid_entries;
+        let mut unparsed = index;
+        loop {
+            for (rule_index, rule) in self.chart[index].iter().enumerate() {
+                // If the rule indicates a completed start symbol, push it to the stack.
+                if self.grammar.dotted_is_completed_start(&rule.0) {
+                    stack.push(CstPathNode {
+                        index,
+                        entry: rule_index as SymbolId,
+                    });
+                }
+            }
+            if !stack.is_empty() {
+                break;
+            }
+            if index > 0 {
+                index -= 1;
+                unparsed = index;
+            } else {
+                break;
+            }
+        }
+
+        CstIter {
+            stack,
+            unparsed,
+            done: false,
+        }
     }
 }
 
@@ -436,7 +487,17 @@ impl Iterator for CstIter {
     type Item = CstIterItem;
 
     fn next(&mut self) -> Option<CstIterItem> {
-        None
+        if self.stack.is_empty() {
+            if self.done {
+                None
+            } else {
+                self.done = true;
+                Some(CstIterItem::Unparsed(self.unparsed))
+            }
+        } else {
+            // TODO: Traverse the tree
+            None
+        }
     }
 }
 
@@ -588,6 +649,13 @@ mod tests {
             }
         }
         println!("dot:\t}}");
+
+        // Construct the node parse tree iterator
+        let cst_iter = parser.cst_iter();
+
+        // It should contain single entry on the stack and nothing unparsed.
+        assert_eq!(cst_iter.stack.len(), 1);
+        assert_eq!(cst_iter.unparsed, 5);
     }
 
     #[test]
@@ -606,6 +674,13 @@ mod tests {
         let res = parser.update(index + 1, 'w');
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), Verdict::Reject);
+
+        // Construct the node parse tree iterator
+        let cst_iter = parser.cst_iter();
+
+        // It should contain an empty stack and everything is unparsed.
+        assert_eq!(cst_iter.stack.len(), 0);
+        assert_eq!(cst_iter.unparsed, 0);
     }
 
     #[test]

@@ -333,6 +333,15 @@ where
         self.rules[i].0 == sym
     }
 
+    /// Return true if dotted rule indicates a completely parsed start symbol, i.e. a successful
+    /// parse.
+    pub fn dotted_is_completed_start(&self, dotted_rule: &DottedRule) -> bool {
+        let rule_index = dotted_rule.rule as usize;
+        let dot_index = dotted_rule.dot as usize;
+        let rule = &self.rules[rule_index];
+        dot_index >= rule.1.len() && self.is_start_rule(rule_index)
+    }
+
     /// Return symbol after the dot or None if dot is at the end
     pub fn dotted_symbol(&self, dotted_rule: &DottedRule) -> CompiledSymbol<M> {
         let rule_index = dotted_rule.rule as usize;
