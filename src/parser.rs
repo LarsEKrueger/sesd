@@ -112,24 +112,28 @@ pub enum Verdict {
     Reject,
 }
 
-/// One point in a CST path
+/// Identify a node in a CST path
+#[derive(Clone, Debug)]
 pub struct CstPathNode {
-    /// Index into buffer
+    /// Index into buffer/chart
     index: usize,
-    /// Index into CST list at that entry
-    entry: SymbolId,
+    /// Index into chart list at that index
+    state: SymbolId,
 }
 
 /// Path from root of parse tree to current node
+#[derive(Debug)]
 pub struct CstPath(Vec<CstPathNode>);
 
 /// One node in the parse tree as returned by the iterator
+#[derive(Debug)]
 pub struct CstIterItemNode {
     pub start: usize,
     pub end: usize,
     pub path: CstPath,
 }
 
+#[derive(Debug)]
 pub enum CstIterItem {
     /// Beginning at this index, the buffer has not been parsed
     Unparsed(usize),
@@ -141,9 +145,16 @@ pub enum CstIterItem {
 /// Iterator to access the parse tree in sequential order
 ///
 /// The items are traversed in pre-order.
-pub struct CstIter {
+pub struct CstIter<'a, T, M>
+where
+    M: Matcher<T>,
+{
+    /// The parser
+    parser: &'a Parser<T, M>,
+
     /// Graph nodes to be visited.
-    stack: Vec<CstPathNode>,
+    /// Contains (item, completed)
+    stack: Vec<(CstPathNode, bool)>,
 
     /// Index of the first unparsed token
     unparsed: usize,
@@ -363,12 +374,13 @@ where
             return Ok(Verdict::Reject);
         }
 
-        let mut new_cst_list = Vec::new();
+        // New entries for cst edge. Child edges need to come first for iterator to work.
+        let mut cst_child_list = Vec::new();
+        let mut cst_sibling_list = Vec::new();
 
         // In order to handle empty rules, the chart must be used, not a separate copy.
         let new_index = index + 1;
         self.chart[new_index] = new_state_list;
-        self.cst[new_index] = new_cst_list;
 
         // Predict and complete the new state. This will usually grow the state list. Thus, indexed
         // access is required.
@@ -406,7 +418,7 @@ where
                                 // links have to go towards the older entries to keep them
                                 // consistent with the siblings edges.
                                 add_to_cst_list(
-                                    &mut self.cst[new_index],
+                                    &mut cst_child_list,
                                     CstEdge {
                                         from_state: new_state,
                                         to_state: i as SymbolId,
@@ -418,7 +430,7 @@ where
                                 // completions.
                                 if !self.chart[start][rule_index].0.is_first() {
                                     add_to_cst_list(
-                                        &mut self.cst[new_index],
+                                        &mut cst_sibling_list,
                                         CstEdge {
                                             from_state: new_state,
                                             to_state: rule_index as SymbolId,
@@ -435,7 +447,10 @@ where
             i += 1;
         }
 
-        self.valid_entries = index + 1;
+        self.cst[new_index] = cst_child_list;
+        self.cst[new_index].append(&mut cst_sibling_list);
+
+        self.valid_entries = new_index;
 
         Ok(if start_rule_completed {
             Verdict::Accept
@@ -444,7 +459,7 @@ where
         })
     }
 
-    pub fn cst_iter(&self) -> CstIter {
+    pub fn cst_iter(&self) -> CstIter<T, M> {
         // Collect all the entries that complete a start symbol. Search backwards from the last
         // entry.
         let mut stack = Vec::new();
@@ -458,10 +473,13 @@ where
             for (rule_index, rule) in self.chart[index].iter().enumerate() {
                 // If the rule indicates a completed start symbol, push it to the stack.
                 if self.grammar.dotted_is_completed_start(&rule.0) {
-                    stack.push(CstPathNode {
-                        index,
-                        entry: rule_index as SymbolId,
-                    });
+                    stack.push((
+                        CstPathNode {
+                            index,
+                            state: rule_index as SymbolId,
+                        },
+                        false,
+                    ));
                 }
             }
             if !stack.is_empty() {
@@ -476,6 +494,7 @@ where
         }
 
         CstIter {
+            parser: &self,
             stack,
             unparsed,
             done: false,
@@ -483,20 +502,77 @@ where
     }
 }
 
-impl Iterator for CstIter {
+impl<'a, T, M> Iterator for CstIter<'a, T, M>
+where
+    M: Matcher<T>,
+{
     type Item = CstIterItem;
 
     fn next(&mut self) -> Option<CstIterItem> {
-        if self.stack.is_empty() {
-            if self.done {
-                None
+        // Traverse the tree
+        // Algo
+        // - If the stack is empty, switch to end sequence (return unparsed, then none)
+        // - Get the top-of-stack (TOS) item, but leave it on the stack. There is at least one entry.
+        // - If the TOS is marked as completed, return it. In that case, all outgoing nodes
+        //   have been processed in previous calls.
+        // - Mark the TOS as completed. If there are outgoing edges, the will be processed before
+        //   the TOS. If we return to this entry later, we know, it has been processed and can be
+        //   returned.
+        // - Process the ooutgoing edges in order. This will process the parent/child links (i.e. downward
+        //   links) first. That way, thwy will be put on the stack first, i.e. processed later.
+        // - Put the node the edge points to on the stack, mark as incomplete.
+        // - Continue with the new TOS item.
+        loop {
+            if let Some(tos) = self.stack.last_mut() {
+                if tos.1 {
+                    // TOS is complete
+                    let tos = self.stack.pop().unwrap();
+                    let state = &self.parser.chart[tos.0.index][tos.0.state as usize];
+
+                    let start = state.1;
+                    let end = tos.0.index;
+                    // The path is the list of completed entries on the stack.
+                    let path = CstPath(
+                        self.stack
+                            .iter()
+                            .filter_map(
+                                |(node, completed)| {
+                                    if *completed {
+                                        Some(node.clone())
+                                    } else {
+                                        None
+                                    }
+                                },
+                            )
+                            .collect(),
+                    );
+
+                    let node = CstIterItemNode { start, end, path };
+                    return Some(CstIterItem::Parsed(node));
+                } else {
+                    // TOS is incomplete
+                    tos.1 = true;
+                    // Find the edges and put the node they point to on the stack.
+                    let from_state = tos.0.state;
+                    let from_index = tos.0.index;
+                    for edge in self.parser.cst[from_index].iter() {
+                        if edge.from_state == from_state {
+                            let node = CstPathNode {
+                                index: edge.to_index,
+                                state: edge.to_state,
+                            };
+                            self.stack.push((node, false));
+                        }
+                    }
+                }
             } else {
-                self.done = true;
-                Some(CstIterItem::Unparsed(self.unparsed))
+                if self.done {
+                    return None;
+                } else {
+                    self.done = true;
+                    return Some(CstIterItem::Unparsed(self.unparsed));
+                }
             }
-        } else {
-            // TODO: Traverse the tree
-            None
         }
     }
 }
@@ -650,12 +726,33 @@ mod tests {
         }
         println!("dot:\t}}");
 
+        let mut cst_iter = parser.cst_iter();
+        for i in cst_iter {
+            println!("iter: {:?}", i);
+        }
+
         // Construct the node parse tree iterator
-        let cst_iter = parser.cst_iter();
+        let mut cst_iter = parser.cst_iter();
 
         // It should contain single entry on the stack and nothing unparsed.
         assert_eq!(cst_iter.stack.len(), 1);
         assert_eq!(cst_iter.unparsed, 5);
+
+        // Get the items in sequence. Check only the depth of path.
+        if let CstIterItem::Parsed(node) = cst_iter.next().expect("item 0") {
+            assert_eq!(node.start, 0);
+            assert_eq!(node.end, 1);
+            assert_eq!(node.path.0.len(), 3);
+        } else {
+            panic!("Item 0 should be CstIterItem::Parsed.");
+        }
+        if let CstIterItem::Parsed(node) = cst_iter.next().expect("item 1") {
+            assert_eq!(node.start, 0);
+            assert_eq!(node.end, 1);
+            assert_eq!(node.path.0.len(), 2);
+        } else {
+            panic!("Item 1 should be CstIterItem::Parsed.");
+        }
     }
 
     #[test]
@@ -676,11 +773,25 @@ mod tests {
         assert_eq!(res.unwrap(), Verdict::Reject);
 
         // Construct the node parse tree iterator
-        let cst_iter = parser.cst_iter();
+        let mut cst_iter = parser.cst_iter();
 
         // It should contain an empty stack and everything is unparsed.
         assert_eq!(cst_iter.stack.len(), 0);
         assert_eq!(cst_iter.unparsed, 0);
+
+        // Test the end sequence of the iterator
+        let item = cst_iter.next();
+        assert!(item.is_some());
+        match item {
+            Some(CstIterItem::Unparsed(_)) => {
+                // All fine.
+            }
+            _ => {
+                panic!("Expected Unparsed.");
+            }
+        }
+        let item = cst_iter.next();
+        assert!(item.is_none());
     }
 
     #[test]

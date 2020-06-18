@@ -84,7 +84,7 @@ where
         self.buffer.move_start();
     }
 
-    pub fn cst_iter(&self) -> CstIter {
+    pub fn cst_iter(&self) -> CstIter<T, M> {
         self.parser.cst_iter()
     }
 }
