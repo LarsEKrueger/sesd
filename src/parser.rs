@@ -130,6 +130,7 @@ pub struct CstPath(Vec<CstPathNode>);
 pub struct CstIterItemNode {
     pub start: usize,
     pub end: usize,
+    pub dotted_rule: DottedRule,
     pub path: CstPath,
 }
 
@@ -504,7 +505,7 @@ where
 
 impl<'a, T, M> Iterator for CstIter<'a, T, M>
 where
-    M: Matcher<T>,
+    M: Matcher<T> + Clone,
 {
     type Item = CstIterItem;
 
@@ -531,26 +532,36 @@ where
 
                     let start = state.1;
                     let end = tos.0.index;
-                    // The path is the list of completed entries on the stack.
+                    // The path is the list of completed, processed entries on the stack.
                     let path = CstPath(
                         self.stack
                             .iter()
-                            .filter_map(
-                                |(node, completed)| {
-                                    if *completed {
-                                        Some(node.clone())
-                                    } else {
-                                        None
-                                    }
-                                },
-                            )
+                            .filter_map(|(node, processed)| {
+                                let is_result = if *processed {
+                                    let dr = &self.parser.chart[node.index][node.state as usize].0;
+                                    self.parser.grammar.dotted_symbol(dr).is_complete()
+                                } else {
+                                    false
+                                };
+                                if is_result {
+                                    Some(node.clone())
+                                } else {
+                                    None
+                                }
+                            })
                             .collect(),
                     );
 
-                    let node = CstIterItemNode { start, end, path };
+                    let node = CstIterItemNode {
+                        start,
+                        end,
+                        dotted_rule: state.0.clone(),
+
+                        path,
+                    };
                     return Some(CstIterItem::Parsed(node));
                 } else {
-                    // TOS is incomplete
+                    // TOS is no processed yet, mark it and process.
                     tos.1 = true;
                     // Find the edges and put the node they point to on the stack.
                     let from_state = tos.0.state;
@@ -728,7 +739,29 @@ mod tests {
 
         let mut cst_iter = parser.cst_iter();
         for i in cst_iter {
-            println!("iter: {:?}", i);
+            match i {
+                CstIterItem::Parsed(i) => {
+                    println!(
+                        "iter: {}, {}-{}",
+                        parser
+                            .grammar
+                            .dotted_rule_to_string(&i.dotted_rule)
+                            .unwrap(),
+                        i.start,
+                        i.end
+                    );
+                    for n in i.path.0.iter() {
+                        let dr = &parser.chart[n.index][n.state as usize].0;
+                        println!(
+                            "iter:   {}",
+                            parser.grammar.dotted_rule_to_string(&dr).unwrap()
+                        );
+                    }
+                }
+                _ => {
+                    println!("iter: {:?}", i);
+                }
+            }
         }
 
         // Construct the node parse tree iterator
@@ -742,14 +775,14 @@ mod tests {
         if let CstIterItem::Parsed(node) = cst_iter.next().expect("item 0") {
             assert_eq!(node.start, 0);
             assert_eq!(node.end, 1);
-            assert_eq!(node.path.0.len(), 3);
+            assert_eq!(node.path.0.len(), 2);
         } else {
             panic!("Item 0 should be CstIterItem::Parsed.");
         }
         if let CstIterItem::Parsed(node) = cst_iter.next().expect("item 1") {
             assert_eq!(node.start, 0);
             assert_eq!(node.end, 1);
-            assert_eq!(node.path.0.len(), 2);
+            assert_eq!(node.path.0.len(), 1);
         } else {
             panic!("Item 1 should be CstIterItem::Parsed.");
         }

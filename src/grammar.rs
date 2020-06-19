@@ -139,7 +139,7 @@ pub enum CompiledSymbol<M> {
 }
 
 /// Dotted Rule from Earley Algo
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct DottedRule {
     /// Index into rule table
     rule: SymbolId,
@@ -423,6 +423,15 @@ impl DottedRule {
 
     pub fn is_first(&self) -> bool {
         self.dot == 0
+    }
+}
+
+impl<M> CompiledSymbol<M> {
+    pub fn is_complete(&self) -> bool {
+        match *self {
+            Self::Completed(_) => true,
+            _ => false,
+        }
     }
 }
 
