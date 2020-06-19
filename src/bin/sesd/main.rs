@@ -22,6 +22,10 @@
     SOFTWARE.
 */
 
+#[macro_use]
+extern crate log;
+extern crate flexi_logger;
+
 use libc;
 use std::fs::OpenOptions;
 use std::io::Read;
@@ -139,31 +143,110 @@ impl App {
     fn update_document(&mut self, width: usize) {
         self.document.clear();
 
+        // Log the parse tree
+        if log_enabled!(log::Level::Trace) {
+            trace!("update_document CST");
+            for cst_node in self.block.cst_iter() {
+                match cst_node {
+                    sesd::CstIterItem::Parsed(item) => {
+                        if item.end - item.start > 0 {
+                            trace!(
+                                "{}, {}-{}",
+                                self.block
+                                    .grammar()
+                                    .dotted_rule_to_string(&item.dotted_rule)
+                                    .unwrap(),
+                                item.start,
+                                item.end
+                            );
+                            for n in item.path_iter() {
+                                let dr = self.block.parser().dotted_rule(n);
+                                trace!(
+                                    "   {}",
+                                    self.block.grammar().dotted_rule_to_string(&dr).unwrap()
+                                );
+                            }
+                        }
+                    }
+                    sesd::CstIterItem::Unparsed(start) => {
+                        trace!("Unparsed: {} - {}", start, self.block.len());
+                    }
+                }
+            }
+        }
+
+        // Traverse the parse tree. If there are items that have no style in the style sheet, draw
+        // them and mark until which index, the input has been drawn already. Skip all entries that
+        // begin before the current end. This prevents multiple occurrances of the same text.
         let mut line_nr = 0;
         let mut line_len = 0;
-        let mut cst_iter = self.block.cst_iter();
-        for cst_node in cst_iter {
+        let mut rendered_until = 0;
+        trace!("update_document render");
+        for cst_node in self.block.cst_iter() {
             match cst_node {
                 CstIterItem::Parsed(cst_node) => {
-                    if line_nr == self.document.len() {
-                        self.document.push(Vec::new());
-                    }
-                    let style = self.style_sheet.lookup(&cst_node.path);
-                    let text = self.block.span_string(cst_node.start, cst_node.end);
-                    line_len += text.len();
-                    if style.line_break_before || line_len > width {
-                        line_nr += 1;
-                        self.document.push(Vec::new());
-                        line_len = text.len();
-                    }
-                    self.document[line_nr].push(SynElement {
-                        attr: style.attr,
-                        text,
-                    });
-                    if style.line_break_after {
-                        line_nr += 1;
-                        self.document.push(Vec::new());
-                        line_len = 0;
+                    trace!(
+                        "{}: {}, {}-{}",
+                        rendered_until,
+                        self.block
+                            .grammar()
+                            .dotted_rule_to_string(&cst_node.dotted_rule)
+                            .unwrap(),
+                        cst_node.start,
+                        cst_node.end
+                    );
+
+                    if cst_node.end != cst_node.start && cst_node.start >= rendered_until {
+                        rendered_until = cst_node.end;
+                        if line_nr == self.document.len() {
+                            self.document.push(Vec::new());
+                        }
+                        let style = self.style_sheet.lookup(&cst_node.path);
+                        let mut text = self.block.span_string(cst_node.start, cst_node.end);
+                        trace!("text: {:?}", text);
+                        if style.line_break_before {
+                            line_nr += 1;
+                            self.document.push(Vec::new());
+                            line_len = 0;
+                        }
+                        // If text contains a newline, split accordingly, but keep the style.
+                        //
+                        // As the last newline is swallowed by the `lines` method, it needs to be
+                        // treated separately.
+                        text.push('\n');
+                        //
+                        // The first line is special as it ends the current line.
+                        let mut lines = text.lines();
+                        if let Some(l) = lines.next() {
+                            line_len += l.len();
+                            if line_len > width {
+                                line_nr += 1;
+                                self.document.push(Vec::new());
+                                line_len = l.len();
+                            }
+                            if l.len() != 0 {
+                                self.document[line_nr].push(SynElement {
+                                    attr: style.attr,
+                                    text: l.to_string(),
+                                });
+                            }
+                        }
+                        // If there are multiple lines, place the items directly
+                        for l in lines {
+                            trace!("  line: {:?}", l);
+                            line_nr += 1;
+                            self.document.push(Vec::new());
+                            self.document[line_nr].push(SynElement {
+                                attr: style.attr,
+                                text: l.to_string(),
+                            });
+                            line_len = l.len();
+                        }
+                        if style.line_break_after {
+                            line_nr += 1;
+                            self.document.push(Vec::new());
+                            line_len = 0;
+                        }
                     }
                 }
                 CstIterItem::Unparsed(unparsed) => {}
@@ -198,6 +281,16 @@ impl App {
 }
 
 fn main() {
+    // Initialise env_logger first
+    let _ = std::env::var("SESD_LOG").and_then(|log| {
+        let _ = flexi_logger::Logger::with_str(log)
+            .format(flexi_logger::with_thread)
+            .log_to_file()
+            .start();
+        info!("Logging is ready");
+        Ok(())
+    });
+
     let cmd_line = CommandLine::from_args();
     eprintln!("{:?}", cmd_line);
 
