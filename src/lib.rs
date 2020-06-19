@@ -87,6 +87,17 @@ where
     pub fn cst_iter(&self) -> CstIter<T, M> {
         self.parser.cst_iter()
     }
+
+    pub fn len(&self) -> usize {
+        self.buffer.len()
+    }
+
+    pub fn parser<'a>(&'a self) -> &Parser<T, M> {
+        &self.parser
+    }
+    pub fn grammar<'a>(&'a self) -> &CompiledGrammar<T, M> {
+        self.parser.grammar()
+    }
 }
 
 impl<M> SyncBlock<char, M>

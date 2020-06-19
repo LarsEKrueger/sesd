@@ -292,6 +292,14 @@ where
         }
     }
 
+    pub fn grammar<'a>(&'a self) -> &'a CompiledGrammar<T, M> {
+        &self.grammar
+    }
+
+    pub fn dotted_rule(&self, node: &CstPathNode) -> DottedRule {
+        self.chart[node.index][node.state as usize].0.clone()
+    }
+
     /// The buffer has changed at index. All parse entries are invalid beginning with the given
     /// index.
     ///
@@ -603,6 +611,12 @@ where
                 );
             }
         }
+    }
+}
+
+impl CstIterItemNode {
+    pub fn path_iter(&self) -> impl Iterator<Item = &CstPathNode> {
+        self.path.0.iter()
     }
 }
 

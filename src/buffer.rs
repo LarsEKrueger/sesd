@@ -121,6 +121,10 @@ impl<T> Buffer<T> {
     pub fn span<'a>(&'a self, start: usize, end: usize) -> &[T] {
         &self.tokens[start..end]
     }
+
+    pub fn len(&self) -> usize {
+        self.tokens.len()
+    }
 }
 
 impl<T> Buffer<T>
