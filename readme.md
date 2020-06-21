@@ -127,7 +127,8 @@ features that implement them.
 # TODO
 
 * [ ] Compile grammar tables using macros (no dynamic memory)
-
+* [ ] Join style sheet and parser
+* [ ] Reduce number of allocations
 
 # LICENSE issues
 
