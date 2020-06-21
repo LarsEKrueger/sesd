@@ -123,7 +123,7 @@ pub struct CstPathNode {
 
 /// Path from root of parse tree to current node
 #[derive(Debug)]
-pub struct CstPath(Vec<CstPathNode>);
+pub struct CstPath(pub Vec<CstPathNode>);
 
 /// One node in the parse tree as returned by the iterator
 #[derive(Debug)]

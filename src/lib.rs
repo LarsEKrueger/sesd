@@ -31,9 +31,9 @@ mod parser;
 
 pub use self::char::CharMatcher;
 use buffer::Buffer;
-pub use grammar::{CompiledGrammar, Grammar, Matcher, Symbol};
+pub use grammar::{CompiledGrammar, DottedRule, Grammar, Matcher, Symbol, SymbolId};
 use parser::Parser;
-pub use parser::{CstIter, CstIterItem, CstPath};
+pub use parser::{CstIter, CstIterItem, CstIterItemNode, CstPath};
 
 /// Editor Block with Synchronous Parsing
 pub struct SyncBlock<T, M>

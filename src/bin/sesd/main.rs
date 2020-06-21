@@ -35,10 +35,11 @@ use std::path::PathBuf;
 use pancurses::{endwin, initscr, noecho, Input, Window};
 use structopt::StructOpt;
 
-use sesd::{CharMatcher, CstIterItem, SyncBlock};
+use sesd::{CharMatcher, CstIterItem, CstIterItemNode, SymbolId, SyncBlock};
 
 mod cargo_toml;
 mod style_sheet;
+use style_sheet::{LookedUp, Style};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "sesd", about = "Syntax directed text editor")]
@@ -139,6 +140,62 @@ impl App {
         AppCmd::Nothing
     }
 
+    fn render_node(
+        block: &Block,
+        document: &mut Vec<Vec<SynElement>>,
+        line_nr: &mut usize,
+        line_len: &mut usize,
+        width: usize,
+        cst_node: CstIterItemNode,
+        style: Style,
+    ) {
+        let mut text = block.span_string(cst_node.start, cst_node.end);
+        trace!("text: {:?}", text);
+        if style.line_break_before {
+            *line_nr += 1;
+            document.push(Vec::new());
+            *line_len = 0;
+        }
+        // If text contains a newline, split accordingly, but keep the style.
+        //
+        // As the last newline is swallowed by the `lines` method, it needs to be
+        // treated separately.
+        text.push('\n');
+        //
+        // The first line is special as it ends the current line.
+        let mut lines = text.lines();
+        if let Some(l) = lines.next() {
+            *line_len += l.len();
+            if *line_len > width {
+                *line_nr += 1;
+                document.push(Vec::new());
+                *line_len = l.len();
+            }
+            if l.len() != 0 {
+                document[*line_nr].push(SynElement {
+                    attr: style.attr,
+                    text: l.to_string(),
+                });
+            }
+        }
+        // If there are multiple lines, place the items directly
+        for l in lines {
+            trace!("  line: {:?}", l);
+            *line_nr += 1;
+            document.push(Vec::new());
+            document[*line_nr].push(SynElement {
+                attr: style.attr,
+                text: l.to_string(),
+            });
+            *line_len = l.len();
+        }
+        if style.line_break_after {
+            *line_nr += 1;
+            document.push(Vec::new());
+            *line_len = 0;
+        }
+    }
+
     /// Update the cached syntax tree
     fn update_document(&mut self, width: usize) {
         self.document.clear();
@@ -197,59 +254,60 @@ impl App {
                     );
 
                     if cst_node.end != cst_node.start && cst_node.start >= rendered_until {
-                        rendered_until = cst_node.end;
                         if line_nr == self.document.len() {
                             self.document.push(Vec::new());
                         }
-                        let style = self.style_sheet.lookup(&cst_node.path);
-                        let mut text = self.block.span_string(cst_node.start, cst_node.end);
-                        trace!("text: {:?}", text);
-                        if style.line_break_before {
-                            line_nr += 1;
-                            self.document.push(Vec::new());
-                            line_len = 0;
-                        }
-                        // If text contains a newline, split accordingly, but keep the style.
-                        //
-                        // As the last newline is swallowed by the `lines` method, it needs to be
-                        // treated separately.
-                        text.push('\n');
-                        //
-                        // The first line is special as it ends the current line.
-                        let mut lines = text.lines();
-                        if let Some(l) = lines.next() {
-                            line_len += l.len();
-                            if line_len > width {
-                                line_nr += 1;
-                                self.document.push(Vec::new());
-                                line_len = l.len();
+
+                        // Convert the path to a list of SymbolIds
+                        let mut path: Vec<SymbolId> = cst_node
+                            .path
+                            .0
+                            .iter()
+                            .map(|n| {
+                                let dr = self.block.parser().dotted_rule(&n);
+                                self.block.grammar().lhs(dr.rule)
+                            })
+                            .collect();
+                        path.push(self.block.grammar().lhs(cst_node.dotted_rule.rule));
+
+                        let looked_up = self.style_sheet.lookup(&path);
+                        trace!("{:?}", looked_up);
+                        match looked_up {
+                            LookedUp::Parent => {
+                                // Do nothing now. Render later.
                             }
-                            if l.len() != 0 {
-                                self.document[line_nr].push(SynElement {
-                                    attr: style.attr,
-                                    text: l.to_string(),
-                                });
+                            LookedUp::Found(style) => {
+                                // Found an exact match. Render with style.
+                                rendered_until = cst_node.end;
+                                Self::render_node(
+                                    &self.block,
+                                    &mut self.document,
+                                    &mut line_nr,
+                                    &mut line_len,
+                                    width,
+                                    cst_node,
+                                    style,
+                                );
                             }
-                        }
-                        // If there are multiple lines, place the items directly
-                        for l in lines {
-                            trace!("  line: {:?}", l);
-                            line_nr += 1;
-                            self.document.push(Vec::new());
-                            self.document[line_nr].push(SynElement {
-                                attr: style.attr,
-                                text: l.to_string(),
-                            });
-                            line_len = l.len();
-                        }
-                        if style.line_break_after {
-                            line_nr += 1;
-                            self.document.push(Vec::new());
-                            line_len = 0;
+                            LookedUp::Nothing => {
+                                // Found nothing. Render with default style.
+                                rendered_until = cst_node.end;
+                                Self::render_node(
+                                    &self.block,
+                                    &mut self.document,
+                                    &mut line_nr,
+                                    &mut line_len,
+                                    width,
+                                    cst_node,
+                                    self.style_sheet.default,
+                                );
+                            }
                         }
                     }
                 }
-                CstIterItem::Unparsed(unparsed) => {}
+                CstIterItem::Unparsed(unparsed) => {
+                    // TODO: Render the unparsed part with defualt syle
+                }
             }
         }
     }
@@ -293,12 +351,14 @@ fn main() {
 
     let cmd_line = CommandLine::from_args();
     eprintln!("{:?}", cmd_line);
+    let grammar = cargo_toml::grammar();
+    let style_sheet = cargo_toml::style_sheet(&grammar);
 
     let mut app = App {
-        block: Block::new(cargo_toml::grammar()),
+        block: Block::new(grammar),
         error: String::new(),
         document: Vec::new(),
-        style_sheet: cargo_toml::style_sheet(),
+        style_sheet,
         cursor_doc_line: 0,
         cursor_win_line: 0,
         cursor_col: 0,
@@ -306,11 +366,25 @@ fn main() {
 
     // Load the file in the buffer if it exists
     app.load_input(&cmd_line);
-    pancurses::set_title(&format!("{} -- sesd", cmd_line.input.to_string_lossy()));
 
     let win = initscr();
     noecho();
     win.keypad(true);
+
+    pancurses::set_title(&format!("{} -- sesd", cmd_line.input.to_string_lossy()));
+    pancurses::start_color();
+    trace!("has_colors: {:?}", pancurses::has_colors());
+    trace!("COLORS: {}", pancurses::COLORS());
+    trace!("COLOR_PAIRS: {}", pancurses::COLOR_PAIRS());
+
+    // Color pairs
+    for f in 0..8 {
+        for b in 0..8 {
+            let c = (f << 3) + b;
+            let r = pancurses::init_pair(c, f, b);
+            trace!("init_pair(p={}, f={}, b={}) = {}", c, f, b, r);
+        }
+    }
 
     app.update_document(win.get_max_x() as usize);
     app.display(&win);

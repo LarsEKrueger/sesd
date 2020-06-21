@@ -29,7 +29,7 @@
 
 use sesd::{CharMatcher, CompiledGrammar, Grammar, Symbol};
 
-use super::style_sheet::{Style, StyleSheet};
+use super::style_sheet::{Style, StyleSheet, SymbolMatcher};
 
 /// Build the grammar for TOML files
 pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
@@ -42,9 +42,116 @@ pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
         .expect("compiling built-in grammar should not fail")
 }
 
+// Style Builder
+struct SB {
+    pub s: Style,
+}
+
+impl SB {
+    fn new() -> Self {
+        Self { s: Style::none() }
+    }
+
+    fn b(mut self) -> Self {
+        self.s.attr.set_bold(true);
+        self
+    }
+
+    fn i(mut self) -> Self {
+        self.s.attr.set_italic(true);
+        self
+    }
+
+    fn u(mut self) -> Self {
+        self.s.attr.set_underline(true);
+        self
+    }
+
+    fn cp(mut self, c: pancurses::ColorPair) -> Self {
+        self.s.attr.set_color_pair(c);
+        self
+    }
+}
+
 /// Build the style sheet for Cargo.toml files
-pub fn style_sheet() -> StyleSheet {
-    StyleSheet::new(Style::none())
+pub fn style_sheet(grammar: &CompiledGrammar<char, CharMatcher>) -> StyleSheet {
+    let mut sheet = StyleSheet::new(Style::none());
+
+    // Table headers, underlined
+    sheet.add(
+        vec![
+            SymbolMatcher::Exact(grammar.nt_id("toml")),
+            SymbolMatcher::Star(grammar.nt_id("expressions")),
+            SymbolMatcher::Exact(grammar.nt_id("expression")),
+            SymbolMatcher::Exact(grammar.nt_id("table")),
+        ],
+        SB::new().u().s,
+    );
+
+    // Comments, italic
+    sheet.add(
+        vec![
+            SymbolMatcher::Exact(grammar.nt_id("toml")),
+            SymbolMatcher::Star(grammar.nt_id("expressions")),
+            SymbolMatcher::Exact(grammar.nt_id("expression")),
+            SymbolMatcher::Exact(grammar.nt_id("maybe_comment")),
+            SymbolMatcher::Exact(grammar.nt_id("comment")),
+        ],
+        SB::new().i().s,
+    );
+
+    // Keys, cyan on black
+    sheet.add(
+        vec![
+            SymbolMatcher::Exact(grammar.nt_id("toml")),
+            SymbolMatcher::Star(grammar.nt_id("expressions")),
+            SymbolMatcher::Exact(grammar.nt_id("expression")),
+            SymbolMatcher::Exact(grammar.nt_id("keyval")),
+            SymbolMatcher::Exact(grammar.nt_id("key")),
+        ],
+        SB::new().cp(pancurses::ColorPair(0o60)).s,
+    );
+
+    // String values, magenta on black
+    sheet.add(
+        vec![
+            SymbolMatcher::Exact(grammar.nt_id("toml")),
+            SymbolMatcher::Star(grammar.nt_id("expressions")),
+            SymbolMatcher::Exact(grammar.nt_id("expression")),
+            SymbolMatcher::Exact(grammar.nt_id("keyval")),
+            SymbolMatcher::Exact(grammar.nt_id("val")),
+            SymbolMatcher::Exact(grammar.nt_id("string")),
+        ],
+        SB::new().cp(pancurses::ColorPair(0o50)).s,
+    );
+
+    // Array values, magenta on black, underline
+    sheet.add(
+        vec![
+            SymbolMatcher::Exact(grammar.nt_id("toml")),
+            SymbolMatcher::Star(grammar.nt_id("expressions")),
+            SymbolMatcher::Exact(grammar.nt_id("expression")),
+            SymbolMatcher::Exact(grammar.nt_id("keyval")),
+            SymbolMatcher::Exact(grammar.nt_id("val")),
+            SymbolMatcher::Exact(grammar.nt_id("array")),
+        ],
+        SB::new().cp(pancurses::ColorPair(0o50)).u().s,
+    );
+
+    // Struct values, magenta on black, italic
+    sheet.add(
+        vec![
+            SymbolMatcher::Exact(grammar.nt_id("toml")),
+            SymbolMatcher::Star(grammar.nt_id("expressions")),
+            SymbolMatcher::Exact(grammar.nt_id("expression")),
+            SymbolMatcher::Exact(grammar.nt_id("keyval")),
+            SymbolMatcher::Exact(grammar.nt_id("val")),
+            SymbolMatcher::Exact(grammar.nt_id("inline-table")),
+        ],
+        SB::new().cp(pancurses::ColorPair(0o50)).i().s,
+    );
+
+    sheet
 }
 
 /// Internal function to support testing

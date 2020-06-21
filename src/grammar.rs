@@ -142,7 +142,7 @@ pub enum CompiledSymbol<M> {
 #[derive(PartialEq, Debug, Clone)]
 pub struct DottedRule {
     /// Index into rule table
-    rule: SymbolId,
+    pub rule: SymbolId,
     /// Index into rhs of rule
     dot: SymbolId,
 }
@@ -361,6 +361,30 @@ where
 
     pub fn nt_name<'a>(&'a self, sym: SymbolId) -> &'a str {
         &self.nonterminal_table[sym as usize]
+    }
+
+    /// Convert the name of non-terminal with its SymbolId.
+    ///
+    /// Unknown names are returned as u32::MAX
+    pub fn nt_id(&self, name: &str) -> SymbolId {
+        for i in 0..self.nonterminal_table.len() {
+            if name == self.nonterminal_table[i] {
+                return i as SymbolId;
+            }
+        }
+        std::u32::MAX
+    }
+
+    /// Convert a list of non-terminal names to SymbolIds.
+    ///
+    /// Unknown names are returned as u32::MAX
+    pub fn nt_ids(&self, names: &[&str]) -> Vec<SymbolId> {
+        names.iter().map(|n| self.nt_id(n)).collect()
+    }
+
+    /// Get the lhs of a rule
+    pub fn lhs(&self, rule: SymbolId) -> SymbolId {
+        self.rules[rule as usize].0
     }
 }
 
