@@ -133,11 +133,120 @@ impl App {
         self.set_error(res);
     }
 
+    /// Try to move cursor and return true if it worked
+    fn cursor_up(&mut self, n: usize) -> bool {
+        let res = self.cursor_doc_line > 0;
+        if res {
+            let n = if self.cursor_doc_line >= n {
+                self.cursor_doc_line -= n;
+                n
+            } else {
+                let n = self.cursor_doc_line;
+                self.cursor_doc_line = 0;
+                n
+            };
+            if self.cursor_win_line >= n {
+                self.cursor_win_line -= n;
+            } else {
+                self.cursor_win_line = 0;
+            }
+        }
+        res
+    }
+
+    /// Try to move cursor and return true if it worked
+    fn cursor_down(&mut self, n: usize, win: &Window) -> bool {
+        let res = self.cursor_doc_line < self.document.len();
+        if res {
+            let n = if self.cursor_doc_line + n <= self.document.len() {
+                self.cursor_doc_line += n;
+                n
+            } else {
+                let n = self.document.len() - self.cursor_doc_line;
+                self.cursor_doc_line = self.document.len();
+                n
+            };
+            let h = (win.get_max_y() as usize) - 1;
+            if self.cursor_win_line + n < h {
+                self.cursor_win_line += n;
+            } else {
+                self.cursor_win_line = n - 1;
+            }
+        }
+        res
+    }
+
+    fn line_len(&self) -> usize {
+        if self.cursor_doc_line < self.document.len() {
+            let mut n = 0;
+            for s in self.document[self.cursor_doc_line].iter() {
+                n += s.text.len();
+            }
+            n
+        } else {
+            0
+        }
+    }
+
+    /// Move cursor to end of line
+    fn cursor_end(&mut self) {
+        self.cursor_col = self.line_len();
+    }
+
     /// Process the input character
     ///
     /// Return true if a redraw is needed
-    fn handle_input(&mut self, ch: Input) -> AppCmd {
-        AppCmd::Nothing
+    fn handle_input(&mut self, win: &Window, ch: Input) -> AppCmd {
+        match ch {
+            Input::KeyLeft => {
+                if self.cursor_col == 0 {
+                    if self.cursor_up(1) {
+                        self.cursor_end();
+                    }
+                } else {
+                    self.cursor_col -= 1;
+                }
+                AppCmd::Display
+            }
+            Input::KeyRight => {
+                let n = self.line_len();
+                if self.cursor_col < n {
+                    self.cursor_col += 1;
+                } else {
+                    if self.cursor_down(1, win) {
+                        self.cursor_col = 0;
+                    }
+                }
+                AppCmd::Display
+            }
+            Input::KeyHome => {
+                self.cursor_col = 0;
+                AppCmd::Display
+            }
+            Input::KeyEnd => {
+                self.cursor_end();
+                AppCmd::Display
+            }
+            Input::KeyUp => {
+                if self.cursor_up(1) {
+                    let n = self.line_len();
+                    if self.cursor_col > n {
+                        self.cursor_col = n;
+                    }
+                }
+                AppCmd::Display
+            }
+            Input::KeyDown => {
+                if self.cursor_down(1, win) {
+                    let n = self.line_len();
+                    if self.cursor_col > n {
+                        self.cursor_col = n;
+                    }
+                }
+                AppCmd::Display
+            }
+            _ => AppCmd::Nothing,
+        }
     }
 
     fn render_node(
@@ -392,7 +501,7 @@ fn main() {
 
     loop {
         if let Some(input) = win.getch() {
-            match app.handle_input(input) {
+            match app.handle_input(&win, input) {
                 AppCmd::Nothing => {
                     // Don't do anything
                 }
