@@ -259,7 +259,7 @@ impl App {
         let mut lines = text.lines();
         if let Some(l) = lines.next() {
             trace!("first line: {:?}", l);
-            if ((*line_len + l.len()) >= width) {
+            if (*line_len + l.len()) >= width {
                 *line_nr += 1;
                 document.push(Vec::new());
                 *line_len = 0;

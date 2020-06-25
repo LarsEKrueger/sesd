@@ -1324,8 +1324,6 @@ pub mod tests {
         grammar.set_start("comment".to_string());
         let grammar = grammar.compile();
         assert!(grammar.is_ok());
-
-        let grammar = grammar.unwrap();
     }
 
 }

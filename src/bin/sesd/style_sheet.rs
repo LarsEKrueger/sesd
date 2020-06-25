@@ -26,7 +26,7 @@
 
 use pancurses::Attributes;
 
-use sesd::{CstPath, SymbolId};
+use sesd::SymbolId;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Style {
