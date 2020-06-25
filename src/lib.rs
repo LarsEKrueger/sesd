@@ -25,11 +25,10 @@
 //! SESD public API
 
 mod buffer;
-mod char;
+pub mod char;
 mod grammar;
 mod parser;
 
-pub use self::char::CharMatcher;
 use buffer::Buffer;
 pub use grammar::{CompiledGrammar, DottedRule, Grammar, Matcher, Symbol, SymbolId};
 use parser::Parser;
@@ -68,7 +67,19 @@ where
     pub fn enter(&mut self, token: T) {
         let c = self.buffer.cursor();
         self.buffer.enter(token.clone());
-        self.parser.update(c, token);
+        self.reparse(c);
+    }
+
+    pub fn delete(&mut self, n: usize) {
+        self.buffer.delete(n);
+        let c = self.buffer.cursor();
+        self.reparse(c);
+    }
+
+    pub fn reparse(&mut self, start: usize) {
+        for (i, t) in self.buffer.token_from_iter(start) {
+            self.parser.update(i, t.clone());
+        }
     }
 
     pub fn append_iter<I>(&mut self, iter: I)
@@ -95,8 +106,68 @@ where
     pub fn parser<'a>(&'a self) -> &Parser<T, M> {
         &self.parser
     }
+
     pub fn grammar<'a>(&'a self) -> &CompiledGrammar<T, M> {
         self.parser.grammar()
+    }
+
+    pub fn move_forward(&mut self, steps: usize) {
+        self.buffer.move_forward(steps)
+    }
+
+    pub fn move_backward(&mut self, steps: usize) -> bool {
+        self.buffer.move_backward(steps)
+    }
+
+    pub fn cursor(&self) -> usize {
+        self.buffer.cursor()
+    }
+
+    /// Set the cursor to the given index, if valid
+    pub fn set_cursor(&mut self, index: usize) {
+        self.buffer.set_cursor(index)
+    }
+
+    /// Search from the given position forward through the tokens until the predicate becomes true.
+    ///
+    /// If the given position is invalid, None will be returned.
+    ///
+    /// Return None, if the index wasn't found. Otherwise, return the index at which the predicate
+    /// became true.
+    pub fn search_forward<F>(&self, start: usize, mut until: F) -> Option<usize>
+    where
+        F: FnMut(&Vec<T>, usize) -> bool,
+    {
+        self.buffer.search_forward(start, until)
+    }
+
+    /// Search from the given position backward through the tokens until the predicate becomes true.
+    ///
+    /// If the given position is invalid, None will be returned.
+    ///
+    /// Return None, if the index wasn't found. Otherwise, return the index at which the predicate
+    /// became true.
+    pub fn search_backward<F>(&self, start: usize, mut until: F) -> Option<usize>
+    where
+        F: FnMut(&Vec<T>, usize) -> bool,
+    {
+        self.buffer.search_backward(start, until)
+    }
+
+    /// Move the cursor forward until the predicate becomes true
+    pub fn skip_forward<F>(&mut self, until: F)
+    where
+        F: FnMut(&Vec<T>, usize) -> bool,
+    {
+        self.buffer.skip_forward(until)
+    }
+
+    /// Move the cursor backward until the predicate becomes true
+    pub fn skip_backward<F>(&mut self, until: F)
+    where
+        F: FnMut(&Vec<T>, usize) -> bool,
+    {
+        self.buffer.skip_backward(until)
     }
 }
 

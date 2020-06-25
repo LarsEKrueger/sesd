@@ -63,12 +63,57 @@ impl<T> Buffer<T> {
         None
     }
 
+    /// Search from the given position backward through the tokens until the predicate becomes true.
+    ///
+    /// If the given position is invalid, None will be returned.
+    ///
+    /// Return None, if the index wasn't found. Otherwise, return the index at which the predicate
+    /// became true.
+    pub fn search_backward<F>(&self, start: usize, mut until: F) -> Option<usize>
+    where
+        F: FnMut(&Vec<T>, usize) -> bool,
+    {
+        let mut index = start;
+        // If the search started directly after the end of the buffer (e.g. from the cursor),
+        // actually start from the last character.
+        if (self.tokens.len() != 0) && (index == self.tokens.len()) {
+            index = self.tokens.len() - 1;
+        }
+        if index < self.tokens.len() {
+            loop {
+                if until(&self.tokens, index) {
+                    return Some(index);
+                }
+                if index == 0 {
+                    return None;
+                }
+                index -= 1;
+            }
+        }
+
+        None
+    }
+
     /// Move the cursor forward by a fixed number of tokens
     pub fn move_forward(&mut self, steps: usize) {
         if steps + self.cursor <= self.tokens.len() {
             self.cursor += steps;
         } else {
             self.cursor = self.tokens.len();
+        }
+    }
+
+    /// Move the cursor backwards by a fixed number of tokens
+    ///
+    /// Return true if the cursor moved
+    pub fn move_backward(&mut self, steps: usize) -> bool {
+        if self.cursor >= steps {
+            self.cursor -= steps;
+            true
+        } else {
+            let res = self.cursor != 0;
+            self.cursor = 0;
+            res
         }
     }
 
@@ -92,6 +137,16 @@ impl<T> Buffer<T> {
         }
     }
 
+    /// Move the cursor backward until the predicate becomes true
+    pub fn skip_backward<F>(&mut self, until: F)
+    where
+        F: FnMut(&Vec<T>, usize) -> bool,
+    {
+        if let Some(index) = self.search_backward(self.cursor, until) {
+            self.cursor = index;
+        }
+    }
+
     /// Enter a single token at the current cursor position and advance the cursor.
     ///
     /// This will insert the token.
@@ -105,6 +160,9 @@ impl<T> Buffer<T> {
     /// Delete tokens at the cursor
     pub fn delete(&mut self, n: usize) {
         self.tokens.drain(self.cursor..(self.cursor + n));
+        if self.cursor > self.len() {
+            self.cursor = self.len();
+        }
     }
 
     /// Delete the whole content
@@ -118,12 +176,23 @@ impl<T> Buffer<T> {
         self.cursor
     }
 
+    /// Set the cursor to the given index, if valid
+    pub fn set_cursor(&mut self, index: usize) {
+        if index <= self.tokens.len() {
+            self.cursor = index
+        }
+    }
+
     pub fn span<'a>(&'a self, start: usize, end: usize) -> &[T] {
         &self.tokens[start..end]
     }
 
     pub fn len(&self) -> usize {
         self.tokens.len()
+    }
+
+    pub fn token_from_iter<'a>(&'a self, start: usize) -> impl Iterator<Item = (usize, &'a T)> {
+        self.tokens.iter().enumerate().skip(start)
     }
 }
 

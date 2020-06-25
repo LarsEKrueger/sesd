@@ -126,6 +126,7 @@ features that implement them.
 
 # TODO
 
+* [ ] BUG: Wrapping long lines doesn't work correctly.
 * [ ] Compile grammar tables using macros (no dynamic memory)
 * [ ] Join style sheet and parser
 * [ ] Reduce number of allocations

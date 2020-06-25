@@ -27,7 +27,7 @@
 //! This is based on https://github.com/toml-lang/toml/blob/master/toml.abnf, which is
 //! MIT licensed.
 
-use sesd::{CharMatcher, CompiledGrammar, Grammar, Symbol};
+use sesd::{char::CharMatcher, CompiledGrammar, Grammar, Symbol};
 
 use super::style_sheet::{Style, StyleSheet, SymbolMatcher};
 

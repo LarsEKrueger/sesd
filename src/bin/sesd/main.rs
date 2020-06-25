@@ -35,7 +35,7 @@ use std::path::PathBuf;
 use pancurses::{endwin, initscr, noecho, Input, Window};
 use structopt::StructOpt;
 
-use sesd::{CharMatcher, CstIterItem, CstIterItemNode, SymbolId, SyncBlock};
+use sesd::{char::CharMatcher, CstIterItem, CstIterItemNode, SymbolId, SyncBlock};
 
 mod cargo_toml;
 mod style_sheet;
@@ -55,6 +55,8 @@ type Block = SyncBlock<char, CharMatcher>;
 struct SynElement {
     attr: pancurses::Attributes,
     text: String,
+    /// Index into block where the element starts
+    start: usize,
 }
 
 /// All state of the edit app
@@ -90,8 +92,11 @@ enum AppCmd {
     /// Quit the app
     Quit,
 
-    /// Redisplay the app. This copies the window to the terminal.
-    Display,
+    /// Buffer has been changed, redraw document and cursor
+    Document,
+
+    /// Cursor position has been changed, redraw screen if scrolled
+    Cursor,
 }
 
 impl App {
@@ -133,122 +138,97 @@ impl App {
         self.set_error(res);
     }
 
-    /// Try to move cursor and return true if it worked
-    fn cursor_up(&mut self, n: usize) -> bool {
-        let res = self.cursor_doc_line > 0;
-        if res {
-            let n = if self.cursor_doc_line >= n {
-                self.cursor_doc_line -= n;
-                n
-            } else {
-                let n = self.cursor_doc_line;
-                self.cursor_doc_line = 0;
-                n
-            };
-            if self.cursor_win_line >= n {
-                self.cursor_win_line -= n;
-            } else {
-                self.cursor_win_line = 0;
-            }
-        }
-        res
-    }
-
-    /// Try to move cursor and return true if it worked
-    fn cursor_down(&mut self, n: usize, win: &Window) -> bool {
-        let res = self.cursor_doc_line < self.document.len();
-        if res {
-            let n = if self.cursor_doc_line + n <= self.document.len() {
-                self.cursor_doc_line += n;
-                n
-            } else {
-                let n = self.document.len() - self.cursor_doc_line;
-                self.cursor_doc_line = self.document.len();
-                n
-            };
-            let h = (win.get_max_y() as usize) - 1;
-            if self.cursor_win_line + n < h {
-                self.cursor_win_line += n;
-            } else {
-                self.cursor_win_line = n - 1;
-            }
-        }
-        res
-    }
-
-    fn line_len(&self) -> usize {
-        if self.cursor_doc_line < self.document.len() {
-            let mut n = 0;
-            for s in self.document[self.cursor_doc_line].iter() {
-                n += s.text.len();
-            }
-            n
-        } else {
-            0
-        }
-    }
-
-    /// Move cursor to end of line
-    fn cursor_end(&mut self) {
-        self.cursor_col = self.line_len();
-    }
-
     /// Process the input character
     ///
     /// Return true if a redraw is needed
-    fn handle_input(&mut self, win: &Window, ch: Input) -> AppCmd {
+    fn handle_input(&mut self, ch: Input) -> AppCmd {
         match ch {
             Input::KeyLeft => {
-                if self.cursor_col == 0 {
-                    if self.cursor_up(1) {
-                        self.cursor_end();
-                    }
-                } else {
-                    self.cursor_col -= 1;
-                }
-                AppCmd::Display
+                self.block.move_backward(1);
+                AppCmd::Cursor
             }
             Input::KeyRight => {
-                let n = self.line_len();
-                if self.cursor_col < n {
-                    self.cursor_col += 1;
-                } else {
-                    if self.cursor_down(1, win) {
-                        self.cursor_col = 0;
-                    }
-                }
-                AppCmd::Display
+                self.block.move_forward(1);
+                AppCmd::Cursor
             }
             Input::KeyHome => {
-                self.cursor_col = 0;
-                AppCmd::Display
+                self.block.skip_backward(sesd::char::start_of_line);
+                AppCmd::Cursor
             }
             Input::KeyEnd => {
-                self.cursor_end();
-                AppCmd::Display
+                self.block.skip_forward(sesd::char::end_of_line);
+                AppCmd::Cursor
             }
             Input::KeyUp => {
-                if self.cursor_up(1) {
-                    let n = self.line_len();
-                    if self.cursor_col > n {
-                        self.cursor_col = n;
+                let col = self.cursor_col;
+                if let Some(this_start) = self
+                    .block
+                    .search_backward(self.block.cursor(), sesd::char::start_of_line)
+                {
+                    if this_start > 0 {
+                        let prev_end = this_start - 1;
+                        if let Some(prev_start) = self
+                            .block
+                            .search_backward(prev_end, sesd::char::start_of_line)
+                        {
+                            if prev_start <= prev_end && prev_end < self.block.cursor() {
+                                self.block.set_cursor(if prev_start + col <= prev_end {
+                                    prev_start + col
+                                } else {
+                                    prev_end
+                                });
+                                return AppCmd::Cursor;
+                            }
+                        }
                     }
                 }
-                AppCmd::Display
+                AppCmd::Nothing
             }
             Input::KeyDown => {
-                if self.cursor_down(1, win) {
-                    let n = self.line_len();
-                    if self.cursor_col > n {
-                        self.cursor_col = n;
+                let col = self.cursor_col;
+                if let Some(this_end) = self
+                    .block
+                    .search_forward(self.block.cursor(), sesd::char::end_of_line)
+                {
+                    let next_start = this_end + 1;
+                    if let Some(next_end) = self
+                        .block
+                        .search_forward(next_start, sesd::char::end_of_line)
+                    {
+                        if next_start <= next_end && self.block.cursor() < next_start {
+                            self.block.set_cursor(if next_start + col <= next_end {
+                                next_start + col
+                            } else {
+                                next_end
+                            });
+                            return AppCmd::Cursor;
+                        }
                     }
                 }
-                AppCmd::Display
+                AppCmd::Nothing
+            }
+            Input::KeyBackspace => {
+                if self.block.move_backward(1) {
+                    self.block.delete(1);
+                }
+                AppCmd::Document
+            }
+            Input::KeyDC => {
+                self.block.delete(1);
+                AppCmd::Document
+            }
+            Input::Character(c) => {
+                self.block.enter(c);
+                AppCmd::Document
             }
             _ => AppCmd::Nothing,
         }
     }
 
+    /// Render a node of the parse tree.
+    ///
+    /// Return None, if the cursor is not inside this node. Return the line and column of the
+    /// document if it is inside.
     fn render_node(
         block: &Block,
         document: &mut Vec<Vec<SynElement>>,
@@ -256,10 +236,12 @@ impl App {
         line_len: &mut usize,
         width: usize,
         cst_node: CstIterItemNode,
+        cursor_index: usize,
         style: Style,
-    ) {
+    ) -> Option<(usize, usize)> {
+        let mut res = None;
+
         let mut text = block.span_string(cst_node.start, cst_node.end);
-        trace!("text: {:?}", text);
         if style.line_break_before {
             *line_nr += 1;
             document.push(Vec::new());
@@ -268,40 +250,125 @@ impl App {
         // If text contains a newline, split accordingly, but keep the style.
         //
         // As the last newline is swallowed by the `lines` method, it needs to be
-        // treated separately.
+        // treated separately. Thus, always adding a newline ensures that a single newline will
+        // result in two lines.
         text.push('\n');
-        //
-        // The first line is special as it ends the current line.
+        trace!("text: {:?}", text);
+        // The first line is special as it possibly wraps the current line.
+        // TODO: Wrap correctly when l is longer than width.
         let mut lines = text.lines();
         if let Some(l) = lines.next() {
-            *line_len += l.len();
-            if *line_len > width {
+            trace!("first line: {:?}", l);
+            if ((*line_len + l.len()) >= width) {
                 *line_nr += 1;
                 document.push(Vec::new());
-                *line_len = l.len();
+                *line_len = 0;
+                trace!("wrapped line");
             }
-            if l.len() != 0 {
-                document[*line_nr].push(SynElement {
+            // If the line is empty, this was just a line break. Since the line break is done in
+            // the loop, nothing needs to be done here.
+            if !l.is_empty() {
+                let se = SynElement {
                     attr: style.attr,
                     text: l.to_string(),
-                });
+                    start: cst_node.start,
+                };
+                if se.spans(cursor_index) {
+                    res = Some((*line_nr, cursor_index - se.start));
+                }
+                document[*line_nr].push(se);
             }
         }
         // If there are multiple lines, place the items directly
         for l in lines {
-            trace!("  line: {:?}", l);
+            trace!("another line: {:?}", l);
+            // We need a place to put the cursor, thus print a marker.
+            let offs = (l.as_ptr() as usize) - (text.as_ptr() as usize);
+            let nl = SynElement {
+                attr: style.attr,
+                text: String::from("¶"),
+                start: cst_node.start + offs - 1,
+            };
+            if nl.spans(cursor_index) {
+                res = Some((*line_nr, cursor_index - nl.start));
+            }
+            document[*line_nr].push(nl);
+
+            // Go to the next line
             *line_nr += 1;
             document.push(Vec::new());
-            document[*line_nr].push(SynElement {
-                attr: style.attr,
-                text: l.to_string(),
-            });
-            *line_len = l.len();
+
+            // If the line contains some text, place it here.
+            if !l.is_empty() {
+                trace!("Something to place on new line");
+                let se = SynElement {
+                    attr: style.attr,
+                    text: l.to_string(),
+                    start: cst_node.start + offs,
+                };
+                if se.spans(cursor_index) {
+                    res = Some((*line_nr, cursor_index - se.start));
+                }
+                document[*line_nr].push(se);
+                *line_len = l.len();
+            }
         }
         if style.line_break_after {
             *line_nr += 1;
             document.push(Vec::new());
             *line_len = 0;
+        }
+        res
+    }
+
+    /// Compute the cached cursor position on screen from the cursor position in the block.
+    fn update_cursor(&mut self, win: &Window) {
+        let old_doc_line = self.cursor_doc_line;
+        let cursor_index = self.block.cursor();
+        'outer: for (line_nr, line) in self.document.iter().enumerate() {
+            let mut line_len = 0;
+            for se in line.iter() {
+                if se.spans(cursor_index) {
+                    self.cursor_doc_line = line_nr;
+                    self.cursor_col = line_len + cursor_index - se.start;
+                    break 'outer;
+                }
+                line_len += se.text.chars().count();
+            }
+        }
+
+        // If the cursor only moved horizontally, just move it
+        if old_doc_line == self.cursor_doc_line {
+            self.move_cursor(win);
+            return;
+        }
+
+        let display_height = self.display_height(win);
+        // If the document cursor moved forward, check if the win cursor can also be moved forward
+        if old_doc_line < self.cursor_doc_line {
+            let lines = self.cursor_doc_line - old_doc_line;
+            if self.cursor_win_line + lines < display_height {
+                self.cursor_win_line += lines;
+                self.move_cursor(win);
+            } else {
+                // Cursor would be outside the display. Place it on the last line and redraw.
+                self.cursor_win_line = display_height - 1;
+                self.display(win);
+            }
+            return;
+        }
+
+        // Document cursor has moved backwards. Can the win cursor just moved too?
+        {
+            let lines = old_doc_line - self.cursor_doc_line;
+            if self.cursor_win_line >= lines {
+                self.cursor_win_line -= lines;
+                self.move_cursor(win);
+            } else {
+                // Cursor would be outside the display. Place it on the first line and redraw.
+                self.cursor_win_line = 0;
+                self.display(win);
+            }
         }
     }
 
@@ -340,6 +407,9 @@ impl App {
                 }
             }
         }
+
+        // Compute the cursor position on the fly.
+        let cursor_index = self.block.cursor();
 
         // Traverse the parse tree. If there are items that have no style in the style sheet, draw
         // them and mark until which index, the input has been drawn already. Skip all entries that
@@ -388,28 +458,38 @@ impl App {
                             LookedUp::Found(style) => {
                                 // Found an exact match. Render with style.
                                 rendered_until = cst_node.end;
-                                Self::render_node(
+                                if let Some((row, col)) = Self::render_node(
                                     &self.block,
                                     &mut self.document,
                                     &mut line_nr,
                                     &mut line_len,
                                     width,
                                     cst_node,
+                                    cursor_index,
                                     style,
-                                );
+                                ) {
+                                    trace!("Cursor to ({},{})", row, col);
+                                    self.cursor_doc_line = row;
+                                    self.cursor_col = col;
+                                }
                             }
                             LookedUp::Nothing => {
                                 // Found nothing. Render with default style.
                                 rendered_until = cst_node.end;
-                                Self::render_node(
+                                if let Some((row, col)) = Self::render_node(
                                     &self.block,
                                     &mut self.document,
                                     &mut line_nr,
                                     &mut line_len,
                                     width,
                                     cst_node,
+                                    cursor_index,
                                     self.style_sheet.default,
-                                );
+                                ) {
+                                    trace!("Cursor to ({},{})", row, col);
+                                    self.cursor_doc_line = row;
+                                    self.cursor_col = col;
+                                }
                             }
                         }
                     }
@@ -421,13 +501,18 @@ impl App {
         }
     }
 
+    fn display_height(&self, win: &Window) -> usize {
+        let win_height = win.get_max_y() as usize;
+        // Leave one line for the error message
+        win_height - 1
+    }
+
     /// Display the current state of the app to the window
     fn display(&self, win: &Window) {
         // First document line to display
         let start_doc_line = self.cursor_doc_line - self.cursor_win_line;
         win.clear();
-        let win_height = win.get_max_y() as usize;
-        let display_height = win_height - 1;
+        let display_height = self.display_height(win);
         for win_line in 0..display_height {
             if win_line + start_doc_line < self.document.len() {
                 win.mv(win_line as i32, 0);
@@ -443,9 +528,15 @@ impl App {
         win.attron(pancurses::A_REVERSE);
         win.mvaddnstr(display_height as i32, 0, &self.error, win.get_max_x());
         win.attroff(pancurses::A_REVERSE);
+        self.move_cursor(win);
+    }
+
+    fn move_cursor(&self, win: &Window) {
         win.mv(self.cursor_win_line as i32, self.cursor_col as i32);
     }
 }
+
+const NUL_BYTE_ARRAY: [libc::c_char; 1] = [0];
 
 fn main() {
     // Initialise env_logger first
@@ -462,6 +553,9 @@ fn main() {
     eprintln!("{:?}", cmd_line);
     let grammar = cargo_toml::grammar();
     let style_sheet = cargo_toml::style_sheet(&grammar);
+
+    // Set the locale so that UTF-8 codepoints appear correctly
+    unsafe { libc::setlocale(libc::LC_ALL, NUL_BYTE_ARRAY[..].as_ptr()) };
 
     let mut app = App {
         block: Block::new(grammar),
@@ -501,12 +595,17 @@ fn main() {
 
     loop {
         if let Some(input) = win.getch() {
-            match app.handle_input(&win, input) {
+            match app.handle_input(input) {
                 AppCmd::Nothing => {
                     // Don't do anything
                 }
                 AppCmd::Quit => break,
-                AppCmd::Display => {
+                AppCmd::Cursor => {
+                    app.update_cursor(&win);
+                    win.refresh();
+                }
+                AppCmd::Document => {
+                    app.update_document(win.get_max_x() as usize);
                     app.display(&win);
                     win.refresh();
                 }
@@ -515,4 +614,10 @@ fn main() {
     }
 
     endwin();
+}
+
+impl SynElement {
+    fn spans(&self, index: usize) -> bool {
+        self.start <= index && (index < (self.start + self.text.chars().count()))
+    }
 }
