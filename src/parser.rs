@@ -24,7 +24,7 @@
 
 //! Parser to work on Buffer
 
-use super::grammar::{CompiledGrammar, CompiledSymbol, DottedRule, Matcher, SymbolId};
+use super::grammar::{CompiledGrammar, CompiledSymbol, DottedRule, Matcher, SymbolId, ERROR_ID};
 
 /// Parser error codes
 #[derive(Debug)]
@@ -379,17 +379,33 @@ where
             }
         }
 
+        // In order to handle empty rules, the chart must be used, not a separate copy.
+        let new_index = index + 1;
+        self.chart[new_index] = new_state_list;
+
+        let mut verdict = None;
+
         if !scanned {
-            return Ok(Verdict::Reject);
+            // None of the predicted symbols matched.
+
+            // Mark as error by adding the error pseudo-rule
+            let error_index = add_to_state_list(
+                &mut self.chart[index],
+                (DottedRule::new(ERROR_ID as usize), index),
+            );
+
+            // Push the recovery symbols to the next index.
+            for rule_index in self.grammar.recovery.iter() {
+                let new_state = (DottedRule::new(*rule_index as usize), new_index);
+                add_to_state_list(&mut self.chart[new_index], new_state);
+            }
+
+            verdict = Some(Verdict::Reject);
         }
 
         // New entries for cst edge. Child edges need to come first for iterator to work.
         let mut cst_child_list = Vec::new();
         let mut cst_sibling_list = Vec::new();
-
-        // In order to handle empty rules, the chart must be used, not a separate copy.
-        let new_index = index + 1;
-        self.chart[new_index] = new_state_list;
 
         // Predict and complete the new state. This will usually grow the state list. Thus, indexed
         // access is required.
@@ -461,11 +477,15 @@ where
 
         self.valid_entries = new_index;
 
-        Ok(if start_rule_completed {
-            Verdict::Accept
-        } else {
-            Verdict::More
-        })
+        verdict = verdict.or_else(|| {
+            Some(if start_rule_completed {
+                Verdict::Accept
+            } else {
+                Verdict::More
+            })
+        });
+
+        Ok(verdict.unwrap())
     }
 
     pub fn cst_iter(&self) -> CstIter<T, M> {
@@ -944,6 +964,96 @@ mod tests {
             let res = parser.update(2, 'b');
             assert!(res.is_ok());
             assert_eq!(res.unwrap(), Verdict::Reject);
+        }
+    }
+
+    /// Test error handling
+    ///
+    /// S = A B
+    /// A = a A   # Recovery rule
+    /// A = a
+    /// B = b
+    /// B = c
+    ///
+    /// Input:
+    /// `aadefaab`
+    ///
+    /// Output (E = error)
+    /// AAEEEAAB
+    #[test]
+    fn error() {
+        let mut grammar = Grammar::<char, CharMatcher>::new();
+        use super::super::grammar::Rule;
+        use CharMatcher::*;
+        use Verdict::*;
+        grammar.set_start("S".to_string());
+        grammar.add(Rule::new("S").nt("A").nt("B").recover());
+        grammar.add(Rule::new("A").t(Exact('a')).nt("A"));
+        grammar.add(Rule::new("A").t(Exact('a')));
+        grammar.add(Rule::new("B").t(Exact('b')));
+        grammar.add(Rule::new("B").t(Exact('c')));
+
+        let compiled_grammar = grammar.compile().expect("compilation should have worked");
+        let mut parser = Parser::<char, CharMatcher>::new(compiled_grammar);
+
+        // "aab" should be accepted
+        for (i, (c, v)) in [('a', More), ('a', More), ('b', Accept)].iter().enumerate() {
+            let res = parser.update(i, *c);
+            assert!(res.is_ok());
+            assert_eq!(res.unwrap(), *v);
+        }
+
+        // "aadefaab" should fail and recover
+        for (i, (c, v)) in [
+            ('a', More),
+            ('a', More),
+            ('d', Reject),
+            ('e', Reject),
+            ('f', Reject),
+            ('a', More),
+            ('a', More),
+            ('b', Accept),
+        ]
+        .iter()
+        .enumerate()
+        {
+            let res = parser.update(i, *c);
+            eprintln!("c={:?}, res={:?}", *c, res);
+            assert!(res.is_ok());
+            assert_eq!(res.unwrap(), *v);
+        }
+
+        parser.print_chart();
+
+        // Go through the parse tree
+        for (cst_node, gt) in parser.cst_iter().zip(
+            [
+                ("A", 0, 1),
+                ("A", 1, 2),
+                ("~~~ERROR~~~", 2, 3),
+                ("~~~ERROR~~~", 3, 4),
+                ("~~~ERROR~~~", 4, 5),
+                ("A", 5, 6),
+                ("A", 6, 7),
+                ("B", 7, 8),
+            ]
+            .iter(),
+        ) {
+            match cst_node {
+                CstIterItem::Unparsed(p) => {
+                    // There should be no actual unparsed data
+                    assert_eq!(p, 8);
+                }
+                CstIterItem::Parsed(cst_node) => {
+                    let r = cst_node.dotted_rule.rule;
+                    let s = parser.grammar.lhs(r);
+                    let name = parser.grammar.nt_name(s);
+                    eprintln!("{:?} / {} <=> {:?}", cst_node, name, gt);
+                    // assert_eq!(name, gt.0);
+                    // assert_eq!(cst_node.start, gt.1);
+                    // assert_eq!(cst_node.end, gt.2);
+                }
+            }
         }
     }
 }

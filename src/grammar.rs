@@ -68,6 +68,13 @@ pub enum Symbol<M> {
     NonTerminal(String),
 }
 
+#[derive(Debug)]
+pub struct Rule<M> {
+    lhs: String,
+    is_recovery: bool,
+    rhs: Vec<Symbol<M>>,
+}
+
 /// A grammar is a set of productions rules: S -> A B C
 ///
 /// When a grammar has been completely defined, it needs to be compiled to be used by the parser.
@@ -83,8 +90,8 @@ where
     M: Matcher<T> + std::fmt::Debug,
     T: std::fmt::Debug,
 {
-    /// Rule table, (lhs, rhs)
-    rules: Vec<(String, Vec<Symbol<M>>)>,
+    /// Rule table
+    rules: Vec<Rule<M>>,
 
     /// Non-terminal that
     start: String,
@@ -99,6 +106,9 @@ pub type SymbolId = u32;
 
 /// Number of symbol ids.
 const MAX_SYMBOL_ID: u32 = std::u32::MAX;
+
+/// ID of the pseudo-non-terminal to represent parsing errors
+pub const ERROR_ID: SymbolId = 0;
 
 /// A compiled grammar identifies non-terminals by their index into the symbol table. This table is
 /// used for debugging and error messages.
@@ -120,6 +130,9 @@ where
     ///
     /// TODO: Flatten this.
     pub rules: Vec<(SymbolId, Vec<SymbolId>)>,
+
+    /// List of rule indices that should be used for error recovery
+    pub recovery: Vec<SymbolId>,
 
     /// Index of start symbol
     pub start: SymbolId,
@@ -185,8 +198,19 @@ where
 
     /// Add a rule with the name of the left hand side symbol and the expansion of the right hand
     /// side.
+    ///
+    /// Obsolete interface
     pub fn add_rule(&mut self, lhs: String, rhs: Vec<Symbol<M>>) {
-        self.rules.push((lhs, rhs));
+        self.rules.push(Rule {
+            lhs,
+            is_recovery: false,
+            rhs,
+        });
+    }
+
+    /// Add a rule
+    pub fn add(&mut self, rule: Rule<M>) {
+        self.rules.push(rule);
     }
 
     /// Set the start symbol. This can be overwritten and may contain unknown an symbol until just
@@ -199,11 +223,15 @@ where
         // Build symbol table. Remember for each symbol if it has been seen on the lhs and assign a
         // symbol ID.
         let mut symbol_set = HashMap::new();
+        // Add a dummy non-terminal symbol for errors. An empty string cannot be added otherwise.
+        symbol_set.insert(String::new(), (true, ERROR_ID as usize));
+        let mut next_symbol_id = (ERROR_ID as usize) + 1;
+
+        // Don't forget the start symbol. It counts as used on the RHS
         if self.start.is_empty() {
             return Err(Error::EmptyStart);
         }
-        let mut next_symbol_id = 0;
-        // Don't forget the start symbol. It counts as used on the RHS
+
         update_symbol(
             &mut symbol_set,
             self.start.clone(),
@@ -214,17 +242,17 @@ where
         let mut terminal_set = HashSet::new();
 
         for r in self.rules.iter() {
-            let lhs = &r.0;
+            let lhs = &r.lhs;
             if lhs.is_empty() {
                 return Err(Error::EmptySymbol);
             }
             update_symbol(&mut symbol_set, lhs.clone(), true, &mut next_symbol_id);
             // The index into the rhs can grow to the full length (i.e. past the last entry).
-            if r.1.len() >= (MAX_SYMBOL_ID as usize) {
+            if r.rhs.len() >= (MAX_SYMBOL_ID as usize) {
                 return Err(Error::TooLarge(lhs.clone()));
             }
-            // TODO: Reject if left recursive rule
-            for s in r.1.iter() {
+            // TODO?: Reject if left recursive rule
+            for s in r.rhs.iter() {
                 match s {
                     Symbol::Terminal(t) => {
                         terminal_set.insert(t);
@@ -247,7 +275,7 @@ where
         }
 
         // Build the non-terminal table by sorting the key-value pairs by id.
-        let nonterminal_table: Vec<String> = symbol_set
+        let mut nonterminal_table: Vec<String> = symbol_set
             .iter()
             .map(|(k, (_, v))| (k, v))
             .sorted_by(|a, b| Ord::cmp(a.1, b.1))
@@ -256,6 +284,8 @@ where
         if nonterminal_table.len() > (MAX_SYMBOL_ID as usize) {
             return Err(Error::TooLarge("Terminals".to_string()));
         }
+        // Overwrite the error pseudo-non-terminal with a descriptive name
+        nonterminal_table[0] = "~~~ERROR~~~".to_string();
 
         // Build the terminal table
         let terminal_table: Vec<M> = terminal_set
@@ -269,32 +299,41 @@ where
             ));
         }
 
-        // Build the rules
-        let rules: Vec<(SymbolId, Vec<SymbolId>)> = self
-            .rules
-            .iter()
-            .map(|(lhs, rhs)| {
-                let lhs_id = symbol_set.get(lhs).expect("lhs symbol should be known").1;
+        // Build the rules and the recovery list at the same time
+        let mut rules: Vec<(SymbolId, Vec<SymbolId>)> = Vec::new();
+        let mut recovery = Vec::new();
 
-                let rhs_id: Vec<SymbolId> = rhs
-                    .iter()
-                    .map(|it| match it {
-                        Symbol::Terminal(t) => {
-                            let t_id = terminal_table
-                                .binary_search(t)
-                                .expect("rhs terminal should be known");
-                            (t_id + nonterminal_table.len()) as SymbolId
-                        }
-                        Symbol::NonTerminal(nt) => {
-                            let nt_id = symbol_set.get(nt).expect("rhs symbol should be known").1;
-                            nt_id as SymbolId
-                        }
-                    })
-                    .collect();
+        // The first rule (id = 0) is a pseudo-rule for error handling.
+        rules.push((ERROR_ID, Vec::new()));
+        for rule in self.rules.iter() {
+            let lhs_id = symbol_set
+                .get(&rule.lhs)
+                .expect("lhs symbol should be known")
+                .1;
 
-                (lhs_id as SymbolId, rhs_id)
-            })
-            .collect();
+            let rhs_id: Vec<SymbolId> = rule
+                .rhs
+                .iter()
+                .map(|it| match it {
+                    Symbol::Terminal(t) => {
+                        let t_id = terminal_table
+                            .binary_search(t)
+                            .expect("rhs terminal should be known");
+                        (t_id + nonterminal_table.len()) as SymbolId
+                    }
+                    Symbol::NonTerminal(nt) => {
+                        let nt_id = symbol_set.get(nt).expect("rhs symbol should be known").1;
+                        nt_id as SymbolId
+                    }
+                })
+                .collect();
+
+            if rule.is_recovery {
+                let id = rules.len() as SymbolId;
+                recovery.push(id);
+            }
+            rules.push((lhs_id as SymbolId, rhs_id))
+        }
 
         // Get the start id
         let start = symbol_set
@@ -307,9 +346,35 @@ where
             nonterminal_table,
             terminal_table,
             rules,
+            recovery,
             start,
             _marker: PhantomData,
         })
+    }
+}
+
+impl<M> Rule<M> {
+    pub fn new(lhs: &str) -> Self {
+        Self {
+            lhs: lhs.to_string(),
+            is_recovery: false,
+            rhs: Vec::new(),
+        }
+    }
+
+    pub fn nt(mut self, nt: &str) -> Self {
+        self.rhs.push(Symbol::NonTerminal(nt.to_string()));
+        self
+    }
+
+    pub fn t(mut self, t: M) -> Self {
+        self.rhs.push(Symbol::Terminal(t));
+        self
+    }
+
+    pub fn recover(mut self) -> Self {
+        self.is_recovery = true;
+        self
     }
 }
 
