@@ -132,6 +132,7 @@ pub struct CstIterItemNode {
     pub end: usize,
     pub dotted_rule: DottedRule,
     pub path: CstPath,
+    pub current: CstPathNode,
 }
 
 #[derive(Debug)]
@@ -379,33 +380,45 @@ where
             }
         }
 
+        let mut verdict = None;
+
         // In order to handle empty rules, the chart must be used, not a separate copy.
         let new_index = index + 1;
         self.chart[new_index] = new_state_list;
 
-        let mut verdict = None;
+        // New entries for cst edge. Child edges need to come first for iterator to work. In case
+        // of errors, the error links need to come first.
+        let mut cst_child_list = Vec::new();
+        let mut cst_sibling_list = Vec::new();
 
         if !scanned {
             // None of the predicted symbols matched.
+            // Remedy: Accept all terminals and insert one error pseudo-rule per terminal into the
+            //         parse tree. Then, predict as usual, but link the
+            //         predictions to the error rules.
 
-            // Mark as error by adding the error pseudo-rule
-            let error_index = add_to_state_list(
-                &mut self.chart[index],
-                (DottedRule::new(ERROR_ID as usize), index),
-            );
+            // Only process the existing entries.
+            for i in 0..self.chart[index].len() {
+                let dr = &self.chart[index][i].0;
+                if let CompiledSymbol::Terminal(_t) = self.grammar.dotted_symbol(&dr) {
+                    // Pretend to be successful, advance the dot and store in new_state
+                    let new_entry = (dr.advance_dot(), self.chart[index][i].1);
+                    let new_state = add_to_state_list(&mut self.chart[new_index], new_entry);
+                    // Mark as error by adding the error pseudo-rule
+                    let error_state = self.chart[new_index].len() as SymbolId;
+                    self.chart[new_index].push((DottedRule::new(ERROR_ID as usize), index));
 
-            // Push the recovery symbols to the next index.
-            for rule_index in self.grammar.recovery.iter() {
-                let new_state = (DottedRule::new(*rule_index as usize), new_index);
-                add_to_state_list(&mut self.chart[new_index], new_state);
+                    // Link together in CST. Will not be de-duplicated.
+                    cst_child_list.push(CstEdge {
+                        from_state: new_state,
+                        to_state: error_state,
+                        to_index: new_index,
+                    });
+                }
             }
 
             verdict = Some(Verdict::Reject);
         }
-
-        // New entries for cst edge. Child edges need to come first for iterator to work.
-        let mut cst_child_list = Vec::new();
-        let mut cst_sibling_list = Vec::new();
 
         // Predict and complete the new state. This will usually grow the state list. Thus, indexed
         // access is required.
@@ -514,12 +527,11 @@ where
             if !stack.is_empty() {
                 break;
             }
-            if index > 0 {
-                index -= 1;
-                unparsed = index;
-            } else {
+            if index == 0 {
                 break;
             }
+            index -= 1;
+            unparsed = index;
         }
 
         CstIter {
@@ -557,7 +569,6 @@ where
                     // TOS is complete
                     let tos = self.stack.pop().unwrap();
                     let state = &self.parser.chart[tos.0.index][tos.0.state as usize];
-
                     let start = state.1;
                     let end = tos.0.index;
                     // The path is the list of completed, processed entries on the stack.
@@ -584,8 +595,8 @@ where
                         start,
                         end,
                         dotted_rule: state.0.clone(),
-
                         path,
+                        current: tos.0.clone(),
                     };
                     return Some(CstIterItem::Parsed(node));
                 } else {
@@ -660,6 +671,59 @@ mod tests {
         Denver,
     }
 
+    fn print_cst_as_dot<T, M>(parser: &Parser<T, M>, prefix: &str, preorder: bool)
+    where
+        M: Matcher<T> + Clone + std::fmt::Debug,
+        T: Clone,
+    {
+        // Print the parse tree for dot
+        println!("\n{}:\tdigraph {{", prefix);
+        // Print the nodes, using their index as an id
+        for (chart_index, state_list) in parser.chart.iter().enumerate() {
+            for (state_index, state) in state_list.iter().enumerate() {
+                println!(
+                    "{}:\tc_{}_{} [label=\"{} [{},{}]\"]",
+                    prefix,
+                    chart_index,
+                    state_index,
+                    parser.grammar.dotted_rule_to_string(&state.0).unwrap(),
+                    state.1,
+                    chart_index
+                );
+            }
+        }
+        // Print the edges
+        for (from_index, es) in parser.cst.iter().enumerate() {
+            for e in es.iter() {
+                println!(
+                    "{}:\tc_{}_{}  -> c_{}_{}",
+                    prefix, from_index, e.from_state, e.to_index, e.to_state
+                );
+            }
+        }
+
+        // Print the CST in pre-order
+        let mut last_cst_node: Option<CstPathNode> = None;
+        for (i, cst_item) in parser.cst_iter().enumerate() {
+            if let CstIterItem::Parsed(cst_node) = cst_item {
+                if let Some(last_cst_node) = last_cst_node {
+                    println!(
+                        "{}:\tc_{}_{}  -> c_{}_{} [label=\"{}\",color=red]",
+                        prefix,
+                        last_cst_node.index,
+                        last_cst_node.state,
+                        cst_node.current.index,
+                        cst_node.current.state,
+                        i,
+                    );
+                }
+
+                last_cst_node = Some(cst_node.current.clone());
+            }
+        }
+        println!("{}:\t}}", prefix);
+    }
+
     /// Define the grammar from: https://www.cs.unm.edu/~luger/ai-final2/CH9_Dynamic%20Programming%20and%20the%20Earley%20Parser.pdf
     ///
     /// S
@@ -721,7 +785,7 @@ mod tests {
     /// Print the parse chart at the end.
     ///
     /// Generate input for a visual representation using `dot`. Show with:
-    /// `cargo test -- --test-threads 1 --nocapture | grep '^dot:' | cut -f2 > john.dot && dot -O -Tpng john.dot`
+    /// `cargo test -- --test-threads 1 --nocapture | grep '^john:' | cut -f2 > john.dot && dot -O -Tpng john.dot`
     ///
     /// The graph is in `john.dot.png`.
     #[test]
@@ -745,31 +809,7 @@ mod tests {
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), Verdict::Accept);
 
-        // Print the parse tree for dot
-        println!("\ndot:\tdigraph {{");
-        // Print the nodes, using their index as an id
-        for (chart_index, state_list) in parser.chart.iter().enumerate() {
-            for (state_index, state) in state_list.iter().enumerate() {
-                println!(
-                    "dot:\tc_{}_{} [label=\"{} [{},{}]\"]",
-                    chart_index,
-                    state_index,
-                    parser.grammar.dotted_rule_to_string(&state.0).unwrap(),
-                    state.1,
-                    chart_index
-                );
-            }
-        }
-        // Print the edges
-        for (from_index, es) in parser.cst.iter().enumerate() {
-            for e in es.iter() {
-                println!(
-                    "dot:\tc_{}_{}  -> c_{}_{}",
-                    from_index, e.from_state, e.to_index, e.to_state
-                );
-            }
-        }
-        println!("dot:\t}}");
+        print_cst_as_dot(&parser, "john", false);
 
         let mut cst_iter = parser.cst_iter();
         for i in cst_iter {
@@ -980,6 +1020,13 @@ mod tests {
     ///
     /// Output (E = error)
     /// AAEEEAAB
+    ///
+    /// Print the parse chart at the end.
+    ///
+    /// Generate input for a visual representation using `dot`. Show with:
+    /// `cargo test -- --test-threads 1 --nocapture | grep '^error:' | cut -f2 > error.dot && dot -O -Tpng error.dot`
+    ///
+    /// The graph is in `error.dot.png`.
     #[test]
     fn error() {
         let mut grammar = Grammar::<char, CharMatcher>::new();
@@ -1003,14 +1050,11 @@ mod tests {
             assert_eq!(res.unwrap(), *v);
         }
 
-        // "aadefaab" should fail and recover
+        // "adab" should fail and recover
         for (i, (c, v)) in [
-            ('a', More),
             ('a', More),
             ('d', Reject),
             ('e', Reject),
-            ('f', Reject),
-            ('a', More),
             ('a', More),
             ('b', Accept),
         ]
@@ -1024,18 +1068,23 @@ mod tests {
         }
 
         parser.print_chart();
+        print_cst_as_dot(&parser, "error", true);
 
         // Go through the parse tree
         for (cst_node, gt) in parser.cst_iter().zip(
             [
                 ("A", 0, 1),
+                ("~~~ERROR~~~", 1, 2),
                 ("A", 1, 2),
                 ("~~~ERROR~~~", 2, 3),
-                ("~~~ERROR~~~", 3, 4),
-                ("~~~ERROR~~~", 4, 5),
-                ("A", 5, 6),
-                ("A", 6, 7),
-                ("B", 7, 8),
+                ("A", 2, 3),
+                ("A", 3, 4),
+                ("A", 2, 4),
+                ("A", 1, 4),
+                ("A", 0, 4),
+                ("S", 0, 4),
+                ("B", 4, 5),
+                ("S", 0, 5),
             ]
             .iter(),
         ) {
