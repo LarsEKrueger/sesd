@@ -142,6 +142,7 @@ impl App {
     ///
     /// Return true if a redraw is needed
     fn handle_input(&mut self, ch: Input) -> AppCmd {
+        trace!("{:?}", ch);
         match ch {
             Input::KeyLeft => {
                 self.block.move_backward(1);
@@ -448,6 +449,14 @@ impl App {
                             })
                             .collect();
                         path.push(self.block.grammar().lhs(cst_node.dotted_rule.rule));
+
+                        // Log the lookup path as readable
+                        if log_enabled!(log::Level::Trace) {
+                            trace!("lookup: {:?}", path);
+                            for p in path.iter() {
+                                trace!("  {:?}", self.block.grammar().nt_name(*p));
+                            }
+                        }
 
                         let looked_up = self.style_sheet.lookup(&path);
                         trace!("{:?}", looked_up);
