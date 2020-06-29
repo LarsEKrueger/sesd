@@ -702,23 +702,25 @@ mod tests {
             }
         }
 
-        // Print the CST in pre-order
-        let mut last_cst_node: Option<CstPathNode> = None;
-        for (i, cst_item) in parser.cst_iter().enumerate() {
-            if let CstIterItem::Parsed(cst_node) = cst_item {
-                if let Some(last_cst_node) = last_cst_node {
-                    println!(
-                        "{}:\tc_{}_{}  -> c_{}_{} [label=\"{}\",color=red]",
-                        prefix,
-                        last_cst_node.index,
-                        last_cst_node.state,
-                        cst_node.current.index,
-                        cst_node.current.state,
-                        i,
-                    );
-                }
+        if preorder {
+            // Print the CST in pre-order
+            let mut last_cst_node: Option<CstPathNode> = None;
+            for (i, cst_item) in parser.cst_iter().enumerate() {
+                if let CstIterItem::Parsed(cst_node) = cst_item {
+                    if let Some(last_cst_node) = last_cst_node {
+                        println!(
+                            "{}:\tc_{}_{}  -> c_{}_{} [label=\"{}\",color=red]",
+                            prefix,
+                            last_cst_node.index,
+                            last_cst_node.state,
+                            cst_node.current.index,
+                            cst_node.current.state,
+                            i,
+                        );
+                    }
 
-                last_cst_node = Some(cst_node.current.clone());
+                    last_cst_node = Some(cst_node.current.clone());
+                }
             }
         }
         println!("{}:\t}}", prefix);
