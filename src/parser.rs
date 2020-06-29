@@ -1107,4 +1107,88 @@ mod tests {
             }
         }
     }
+
+    /// Test error handling deep in the parse tree
+    ///
+    /// S = id ws '=' ws id
+    /// id = a id
+    /// id = a
+    /// ws = ' ' ws
+    /// ws = ' '
+    ///
+    /// Input
+    /// aa /= aa
+    ///
+    /// Print the parse chart at the end.
+    ///
+    /// Generate input for a visual representation using `dot`. Show with:
+    /// `cargo test -- --test-threads 1 --nocapture | grep '^deep_error:' | cut -f2 > deep_error.dot && dot -O -Tpng deep_error.dot`
+    ///
+    /// The graph is in `deep_error.dot.png`.
+    #[test]
+    fn deep_error() {
+        let mut grammar = Grammar::<char, CharMatcher>::new();
+        use super::super::grammar::Rule;
+        use CharMatcher::*;
+        use Verdict::*;
+        grammar.set_start("S".to_string());
+        grammar.add(
+            Rule::new("S")
+                .nt("id")
+                .nt("ws")
+                .t(Exact('='))
+                .nt("ws")
+                .nt("id"),
+        );
+        grammar.add(Rule::new("id").t(Exact('a')).nt("id"));
+        grammar.add(Rule::new("id").t(Exact('a')));
+        grammar.add(Rule::new("ws").t(Exact(' ')).nt("ws"));
+        grammar.add(Rule::new("ws").t(Exact(' ')));
+
+        let compiled_grammar = grammar.compile().expect("compilation should have worked");
+        let mut parser = Parser::<char, CharMatcher>::new(compiled_grammar);
+
+        // "aa = aa" should be accepted
+        for (i, (c, v)) in [
+            ('a', More),
+            ('a', More),
+            (' ', More),
+            ('=', More),
+            (' ', More),
+            ('a', Accept),
+            ('a', Accept),
+        ]
+        .iter()
+        .enumerate()
+        {
+            let res = parser.update(i, *c);
+            assert!(res.is_ok());
+            assert_eq!(res.unwrap(), *v);
+        }
+
+        // "aa /= aa" should fail
+        for (i, (c, v)) in [
+            ('a', More),
+            ('a', More),
+            (' ', More),
+            ('/', Reject),
+            ('=', More),
+            (' ', More),
+            ('a', Accept),
+            ('a', Accept),
+        ]
+        .iter()
+        .enumerate()
+        {
+            let res = parser.update(i, *c);
+            eprintln!("c={:?}, res={:?}", *c, res);
+            assert!(res.is_ok());
+            assert_eq!(res.unwrap(), *v);
+        }
+
+        // Print chart and graph
+        parser.print_chart();
+        print_cst_as_dot(&parser, "deep_error", false);
+    }
+
 }
