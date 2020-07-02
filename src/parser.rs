@@ -362,19 +362,37 @@ where
         // Get the state list to read from
         let state_list = &self.chart[index];
 
+        // New entries for cst edge. Child edges need to come first for iterator to work. In case
+        // of errors, the error links need to come first.
+        let mut cst_child_list = Vec::new();
+        let mut cst_sibling_list = Vec::new();
+
         // Perform *scan*.
         //
         // The invariant of chart is that chart[i] has been fully predicted and completed before
         // update(i) is called. Thus, only *scan* remains to be done. The order of operations
         // doesn't matter as *scan* will not change the chart[i].
         let mut scanned = false;
-        for state in state_list {
+        for (state_index, state) in state_list.iter().enumerate() {
             let dr = &state.0;
             if let CompiledSymbol::Terminal(t) = self.grammar.dotted_symbol(&dr) {
                 if t.matches(token.clone()) {
                     // Successful, advance the dot and store in new_state
-                    let new_state = (dr.advance_dot(), state.1);
-                    add_to_state_list(&mut new_state_list, new_state);
+                    let new_entry = (dr.advance_dot(), state.1);
+                    let new_state = add_to_state_list(&mut new_state_list, new_entry);
+
+                    // Add a sibling link if this isn't the first symbol in the rule.
+                    if !dr.is_first() {
+                        add_to_cst_list(
+                            &mut cst_sibling_list,
+                            CstEdge {
+                                from_state: new_state,
+                                to_state: state_index as SymbolId,
+                                to_index: index,
+                            },
+                        );
+                    }
+
                     scanned = true;
                 }
             }
@@ -385,11 +403,6 @@ where
         // In order to handle empty rules, the chart must be used, not a separate copy.
         let new_index = index + 1;
         self.chart[new_index] = new_state_list;
-
-        // New entries for cst edge. Child edges need to come first for iterator to work. In case
-        // of errors, the error links need to come first.
-        let mut cst_child_list = Vec::new();
-        let mut cst_sibling_list = Vec::new();
 
         if !scanned {
             // None of the predicted symbols matched.
@@ -408,7 +421,8 @@ where
                     let error_state = self.chart[new_index].len() as SymbolId;
                     self.chart[new_index].push((DottedRule::new(ERROR_ID as usize), index));
 
-                    // Link together in CST. Will not be de-duplicated.
+                    // Link pretended match to error entry. Must not be de-duplicated if multiple
+                    // errors occur.
                     cst_child_list.push(CstEdge {
                         from_state: new_state,
                         to_state: error_state,
@@ -1100,15 +1114,15 @@ mod tests {
                     let s = parser.grammar.lhs(r);
                     let name = parser.grammar.nt_name(s);
                     eprintln!("{:?} / {} <=> {:?}", cst_node, name, gt);
-                    // assert_eq!(name, gt.0);
-                    // assert_eq!(cst_node.start, gt.1);
-                    // assert_eq!(cst_node.end, gt.2);
+                    assert_eq!(name, gt.0);
+                    assert_eq!(cst_node.start, gt.1);
+                    assert_eq!(cst_node.end, gt.2);
                 }
             }
         }
     }
 
-    /// Test error handling deep in the parse tree
+    /// Test terminals in the middle of a rule.
     ///
     /// S = id ws '=' ws id
     /// id = a id
@@ -1122,11 +1136,11 @@ mod tests {
     /// Print the parse chart at the end.
     ///
     /// Generate input for a visual representation using `dot`. Show with:
-    /// `cargo test -- --test-threads 1 --nocapture | grep '^deep_error:' | cut -f2 > deep_error.dot && dot -O -Tpng deep_error.dot`
+    /// `cargo test -- --test-threads 1 --nocapture | grep '^mid_term:' | cut -f2 > mid_term.dot && dot -O -Tpng mid_term.dot`
     ///
-    /// The graph is in `deep_error.dot.png`.
+    /// The graph is in `mid_term.dot.png`.
     #[test]
-    fn deep_error() {
+    fn mid_term() {
         let mut grammar = Grammar::<char, CharMatcher>::new();
         use super::super::grammar::Rule;
         use CharMatcher::*;
@@ -1166,6 +1180,45 @@ mod tests {
             assert_eq!(res.unwrap(), *v);
         }
 
+        parser.print_chart();
+        print_cst_as_dot(&parser, "mid_term_ok", true);
+
+        // Go through the parse tree
+        for (cst_node, gt) in parser.cst_iter().zip(
+            [
+                ("id", 0, 1),
+                ("id", 1, 2),
+                ("id", 0, 2),
+                ("S", 0, 2),
+                ("ws", 2, 3),
+                ("S", 0, 3),
+                ("S", 0, 4),
+                ("ws", 4, 5),
+                ("S", 0, 5),
+                ("id", 5, 6),
+                ("id", 6, 7),
+                ("id", 5, 7),
+                ("S", 0, 7),
+            ]
+            .iter(),
+        ) {
+            match cst_node {
+                CstIterItem::Unparsed(p) => {
+                    // There should be no actual unparsed data
+                    assert_eq!(p, 8);
+                }
+                CstIterItem::Parsed(cst_node) => {
+                    let r = cst_node.dotted_rule.rule;
+                    let s = parser.grammar.lhs(r);
+                    let name = parser.grammar.nt_name(s);
+                    eprintln!("{:?} / {} <=> {:?}", cst_node, name, gt);
+                    assert_eq!(name, gt.0);
+                    assert_eq!(cst_node.start, gt.1);
+                    assert_eq!(cst_node.end, gt.2);
+                }
+            }
+        }
+
         // "aa /= aa" should fail
         for (i, (c, v)) in [
             ('a', More),
@@ -1188,7 +1241,46 @@ mod tests {
 
         // Print chart and graph
         parser.print_chart();
-        print_cst_as_dot(&parser, "deep_error", false);
+        print_cst_as_dot(&parser, "mid_term", true);
+
+        // Go through the parse tree
+        for (cst_node, gt) in parser.cst_iter().zip(
+            [
+                ("id", 0, 1),
+                ("id", 1, 2),
+                ("id", 0, 2),
+                ("S", 0, 2),
+                ("ws", 2, 3),
+                ("~~~ERROR~~~", 3, 4),
+                ("ws", 3, 4),
+                ("ws", 2, 4),
+                ("S", 0, 4),
+                ("S", 0, 5),
+                ("ws", 5, 6),
+                ("S", 0, 6),
+                ("id", 6, 7),
+                ("id", 7, 8),
+                ("id", 6, 8),
+                ("S", 0, 8),
+            ]
+            .iter(),
+        ) {
+            match cst_node {
+                CstIterItem::Unparsed(p) => {
+                    // There should be no actual unparsed data
+                    assert_eq!(p, 8);
+                }
+                CstIterItem::Parsed(cst_node) => {
+                    let r = cst_node.dotted_rule.rule;
+                    let s = parser.grammar.lhs(r);
+                    let name = parser.grammar.nt_name(s);
+                    eprintln!("{:?} / {} <=> {:?}", cst_node, name, gt);
+                    assert_eq!(name, gt.0);
+                    assert_eq!(cst_node.start, gt.1);
+                    assert_eq!(cst_node.end, gt.2);
+                }
+            }
+        }
     }
 
 }
