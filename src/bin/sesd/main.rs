@@ -236,13 +236,14 @@ impl App {
         line_nr: &mut usize,
         line_len: &mut usize,
         width: usize,
-        cst_node: CstIterItemNode,
+        start: usize,
+        end: usize,
         cursor_index: usize,
         style: Style,
     ) -> Option<(usize, usize)> {
         let mut res = None;
 
-        let mut text = block.span_string(cst_node.start, cst_node.end);
+        let mut text = block.span_string(start, end);
         if style.line_break_before {
             *line_nr += 1;
             document.push(Vec::new());
@@ -272,7 +273,7 @@ impl App {
                 let se = SynElement {
                     attr: style.attr,
                     text: l.to_string(),
-                    start: cst_node.start,
+                    start,
                 };
                 if se.spans(cursor_index) {
                     res = Some((*line_nr, cursor_index - se.start));
@@ -288,7 +289,7 @@ impl App {
             let nl = SynElement {
                 attr: style.attr,
                 text: String::from("¶"),
-                start: cst_node.start + offs - 1,
+                start: start + offs - 1,
             };
             if nl.spans(cursor_index) {
                 res = Some((*line_nr, cursor_index - nl.start));
@@ -305,7 +306,7 @@ impl App {
                 let se = SynElement {
                     attr: style.attr,
                     text: l.to_string(),
-                    start: cst_node.start + offs,
+                    start: start + offs,
                 };
                 if se.spans(cursor_index) {
                     res = Some((*line_nr, cursor_index - se.start));
@@ -433,7 +434,10 @@ impl App {
                         cst_node.end
                     );
 
-                    if cst_node.end != cst_node.start && cst_node.start >= rendered_until {
+                    // If a rule contains a terminal in the middle, and no style has been defined,
+                    // it is possible that rendered_until is larger than cst_node.start. Thus, the
+                    // buffer needs to be rendered from rendered_until to cst_node.end.
+                    if cst_node.end != cst_node.start && cst_node.end > rendered_until {
                         if line_nr == self.document.len() {
                             self.document.push(Vec::new());
                         }
@@ -466,14 +470,14 @@ impl App {
                             }
                             LookedUp::Found(style) => {
                                 // Found an exact match. Render with style.
-                                rendered_until = cst_node.end;
                                 if let Some((row, col)) = Self::render_node(
                                     &self.block,
                                     &mut self.document,
                                     &mut line_nr,
                                     &mut line_len,
                                     width,
-                                    cst_node,
+                                    rendered_until,
+                                    cst_node.end,
                                     cursor_index,
                                     style,
                                 ) {
@@ -481,17 +485,18 @@ impl App {
                                     self.cursor_doc_line = row;
                                     self.cursor_col = col;
                                 }
+                                rendered_until = cst_node.end;
                             }
                             LookedUp::Nothing => {
                                 // Found nothing. Render with default style.
-                                rendered_until = cst_node.end;
                                 if let Some((row, col)) = Self::render_node(
                                     &self.block,
                                     &mut self.document,
                                     &mut line_nr,
                                     &mut line_len,
                                     width,
-                                    cst_node,
+                                    rendered_until,
+                                    cst_node.end,
                                     cursor_index,
                                     self.style_sheet.default,
                                 ) {
@@ -499,6 +504,7 @@ impl App {
                                     self.cursor_doc_line = row;
                                     self.cursor_col = col;
                                 }
+                                rendered_until = cst_node.end;
                             }
                         }
                     }
