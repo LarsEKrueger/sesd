@@ -27,7 +27,7 @@
 //! This is based on https://github.com/toml-lang/toml/blob/master/toml.abnf, which is
 //! MIT licensed.
 
-use sesd::{char::CharMatcher, CompiledGrammar, Grammar, Symbol};
+use sesd::{char::CharMatcher, CompiledGrammar, Grammar, Symbol, ERROR_ID};
 
 use super::style_sheet::{Style, StyleSheet, SymbolMatcher};
 
@@ -149,6 +149,12 @@ pub fn style_sheet(grammar: &CompiledGrammar<char, CharMatcher>) -> StyleSheet {
             SymbolMatcher::Exact(grammar.nt_id("inline-table")),
         ],
         SB::new().cp(pancurses::ColorPair(0o50)).i().s,
+    );
+
+    // Any error, white on red
+    sheet.add(
+        vec![SymbolMatcher::SkipTo(ERROR_ID)],
+        SB::new().cp(pancurses::ColorPair(0o71)).i().s,
     );
 
     sheet

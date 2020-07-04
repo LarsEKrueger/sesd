@@ -50,6 +50,9 @@ pub enum SymbolMatcher {
 
     /// Zero or more matches of the same symbol
     Star(SymbolId),
+
+    /// Skip over non-matching symbol, advance on match
+    SkipTo(SymbolId),
 }
 
 /// A simple matcher of non-terminals, to return a style.
@@ -136,6 +139,13 @@ impl StyleSheet {
                         } else {
                             active[i].1 += 1;
                         }
+                    }
+                    SymbolMatcher::SkipTo(sym) => {
+                        if sym == *s {
+                            active[i].1 += 1;
+                        }
+                        i += 1;
+                        found = true;
                     }
                 }
             }

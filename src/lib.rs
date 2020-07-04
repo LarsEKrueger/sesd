@@ -30,7 +30,7 @@ mod grammar;
 mod parser;
 
 use buffer::Buffer;
-pub use grammar::{CompiledGrammar, DottedRule, Grammar, Matcher, Symbol, SymbolId};
+pub use grammar::{CompiledGrammar, DottedRule, Grammar, Matcher, Symbol, SymbolId, ERROR_ID};
 use parser::Parser;
 pub use parser::{CstIter, CstIterItem, CstIterItemNode, CstPath};
 
