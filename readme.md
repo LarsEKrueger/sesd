@@ -8,13 +8,17 @@ to be flexible enough to operate on any kind of symbol.
 
 The library shall fulfil the following tasks:
 
-* Provide the basic operations of a text editor buffer.
-* Parse the input in parallel to editing, based on an arbitrary, user provided grammar.
-* Parsing shall be able to happen either synchronously on every edit operation
-  or asynchronously in a separate thread. Configuring this at compile time is sufficient.
-* Provide access to the parse tree of the current input.
+* [X] Provide the basic operations of a text editor buffer.
+* [X] Parse the input in parallel to editing, based on an arbitrary, user provided grammar.
+* Parsing shall be able to happen
+  * [X] either synchronously on every edit operation or
+  * [ ] asynchronously in a separate thread.
+  * [ ] Configuring this at compile time is sufficient.
+* [X] Provide access to the parse tree of the current input.
 * Support for Marpa's *ruby slippers* parsing where the parser fills in missing data.
-* Support for rendering and editing the stream based on the grammar
+* Support for
+  * [X] rendering and
+  * [ ] editing the stream based on the grammar
 
 The following features (mostly based on Marps's features) are not in the scope:
 
@@ -27,7 +31,7 @@ synchronisation between parser and editor buffer. It might be possible to add
 that on top of Marpa and will be considered as a future direction once the
 basic proof-of-concept has been implemented.
 
-A small editor (text mode only) will be added to demonstrate these features.
+* [X] A small editor (text mode only) will be added to demonstrate these features.
 
 ## How to build this library
 
@@ -126,7 +130,7 @@ features that implement them.
 
 # TODO
 
-* [ ] BUG: Wrapping long lines doesn't work correctly.
+* [ ] BUG: Wrapping long lines don't work correctly.
 * [ ] Compile grammar tables using macros (no dynamic memory)
 * [ ] Join style sheet and parser
 * [ ] Reduce number of allocations
