@@ -112,46 +112,47 @@ impl StyleSheet {
         // * If the matcher reaches the end together with path, return Found.
         //
         // If there are no matchers left, return Nothing.
+        //
+        // In case of multiple matches, use the longest one.
         trace!("lookup: {:?}", path);
+        let mut res = LookedUp::Nothing;
         for s in path.iter() {
             trace!("  {:?}", s);
             let mut i = 0;
-            let mut found = false;
             while i < active.len() {
                 trace!("  {}, {:?}, {:?}", i, active[i], self.styles[active[i].0]);
                 if active[i].1 >= self.styles[active[i].0].pattern.len() {
-                    return LookedUp::Parent;
-                }
-                match self.styles[active[i].0].pattern[active[i].1] {
-                    SymbolMatcher::Exact(sym) => {
-                        if sym == *s {
-                            active[i].1 += 1;
-                            found = true;
+                    res = LookedUp::Parent;
+                    active.remove(i);
+                } else {
+                    match self.styles[active[i].0].pattern[active[i].1] {
+                        SymbolMatcher::Exact(sym) => {
+                            if sym == *s {
+                                active[i].1 += 1;
+                                i += 1;
+                            } else {
+                                active.remove(i);
+                            }
+                        }
+                        SymbolMatcher::Star(sym) => {
+                            if sym == *s {
+                                i += 1;
+                            } else {
+                                active[i].1 += 1;
+                            }
+                        }
+                        SymbolMatcher::SkipTo(sym) => {
+                            if sym == *s {
+                                active[i].1 += 1;
+                            }
                             i += 1;
-                        } else {
-                            active.remove(i);
                         }
-                    }
-                    SymbolMatcher::Star(sym) => {
-                        if sym == *s {
-                            found = true;
-                            i += 1;
-                        } else {
-                            active[i].1 += 1;
-                        }
-                    }
-                    SymbolMatcher::SkipTo(sym) => {
-                        if sym == *s {
-                            active[i].1 += 1;
-                        }
-                        i += 1;
-                        found = true;
                     }
                 }
             }
 
-            if active.len() == 0 || !found {
-                return LookedUp::Nothing;
+            if active.len() == 0 {
+                return res;
             }
         }
         // There is at least one active matcher left. If there is one at the end, return it as
@@ -163,6 +164,6 @@ impl StyleSheet {
             }
         }
 
-        LookedUp::Nothing
+        res
     }
 }
