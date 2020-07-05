@@ -1,0 +1,21 @@
+{package]
+name = "sesd"
+version = "0.1.0"
+authors = ["Lars Krueger <lars_e_krueger@gmx.de>"]
+edition = "2018"
+description = "Structured Editing of Stream Data"
+readme = "readme.md"
+license-file = "LICENSE"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+itertools = "0.8.2"
+structopt = { version = "0.3", default-features = false }
+libc = "0.2.71"
+log = "0.4.0"
+flexi_logger = "=0.10.2"
+
+[dependencies.pancurses]
+version = "0.16.1"
+features=["wide"]
