@@ -82,13 +82,15 @@ where
         }
     }
 
-    pub fn append_iter<I>(&mut self, iter: I)
+    pub fn enter_iter<I>(&mut self, iter: I)
     where
         I: Iterator<Item = T>,
     {
+        let c = self.buffer.cursor();
         for t in iter {
-            self.enter(t);
+            self.buffer.enter(t);
         }
+        self.reparse(c);
     }
 
     pub fn move_start(&mut self) {
@@ -168,6 +170,11 @@ where
         F: FnMut(&Vec<T>, usize) -> bool,
     {
         self.buffer.skip_backward(until)
+    }
+
+    /// List of symbols predicted at the cursor position
+    pub fn predictions_at_cursor(&self) -> Vec<SymbolId> {
+        self.parser.predictions(self.buffer.cursor())
     }
 }
 

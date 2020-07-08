@@ -157,6 +157,29 @@ pub fn style_sheet(grammar: &CompiledGrammar<char, CharMatcher>) -> StyleSheet {
         SB::new().cp(pancurses::ColorPair(0o71)).i().s,
     );
 
+    // Predictions
+    sheet.add_prediction(
+        grammar.nt_id("table"),
+        &[
+            "[package]",
+            "[lib]",
+            "[[bin]]",
+            "[[example]]",
+            "[[test]]",
+            "[[bench]]",
+            "[dependencies]",
+            "[dev-dependencies]",
+            "[build-dependencies]",
+            "[target]",
+            "[badges]",
+            "[features]",
+            "[patch]",
+            "[replace]",
+            "[profile]",
+            "[workspace]",
+        ],
+    );
+
     sheet
 }
 

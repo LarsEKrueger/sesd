@@ -24,6 +24,8 @@
 
 //! Style sheet
 
+use std::collections::HashMap;
+
 use pancurses::Attributes;
 
 use sesd::SymbolId;
@@ -40,6 +42,9 @@ pub struct StyleSheet {
 
     /// All style matchers
     styles: Vec<StyleMatcher>,
+
+    /// List of predictions for a given symbol
+    predictions: HashMap<SymbolId, Vec<String>>,
 }
 
 /// Simple matcher for parse tree paths
@@ -90,6 +95,7 @@ impl StyleSheet {
         Self {
             default,
             styles: Vec::new(),
+            predictions: HashMap::new(),
         }
     }
 
@@ -165,5 +171,21 @@ impl StyleSheet {
         }
 
         res
+    }
+
+    /// Add a prediction to the style sheet
+    pub fn add_prediction(&mut self, sym: SymbolId, pred: &[&str]) {
+        let preds = pred.iter().map(|s| s.to_string()).collect();
+        self.predictions.insert(sym, preds);
+    }
+
+    /// Find the predictions for this symbol
+    pub fn predictions(&self, sym: SymbolId) -> Vec<String> {
+        self.predictions
+            .get(&sym)
+            .iter()
+            .flat_map(|p| p.iter())
+            .map(|s| s.clone())
+            .collect()
     }
 }

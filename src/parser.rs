@@ -24,6 +24,8 @@
 
 //! Parser to work on Buffer
 
+use itertools::Itertools;
+
 use super::grammar::{CompiledGrammar, CompiledSymbol, DottedRule, Matcher, SymbolId, ERROR_ID};
 
 /// Parser error codes
@@ -515,6 +517,7 @@ where
         Ok(verdict.unwrap())
     }
 
+    /// Return a pre-order CST iterator
     pub fn cst_iter(&self) -> CstIter<T, M> {
         // Collect all the entries that complete a start symbol. Search backwards from the last
         // entry.
@@ -554,6 +557,29 @@ where
             unparsed,
             done: false,
         }
+    }
+
+    /// Iterate through the predictions in the same order that the cst would generate them.
+    ///
+    /// Return None if index is invalid
+    pub fn predictions(&self, index: usize) -> Vec<SymbolId> {
+        debug_assert!(self.valid_entries < self.chart.len());
+        if index >= self.chart.len() {
+            return Vec::new();
+        }
+        // In ambiguous grammars, the symbols might appear multiple times
+        self.chart[index]
+            .iter()
+            .rev()
+            .filter_map(|state| {
+                if state.0.is_first() {
+                    Some(self.grammar.lhs(state.0.rule))
+                } else {
+                    None
+                }
+            })
+            .unique()
+            .collect()
     }
 }
 

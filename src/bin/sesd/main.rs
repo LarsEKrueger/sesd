@@ -25,6 +25,7 @@
 #[macro_use]
 extern crate log;
 extern crate flexi_logger;
+extern crate itertools;
 
 use libc;
 use std::fs::OpenOptions;
@@ -81,10 +82,17 @@ struct App {
     /// Cursor positon in the document and on screen
     cursor_col: usize,
 
+    /// Predictions
+    predictions: Vec<String>,
+
+    /// Selected prediction
+    selected_predition: Option<usize>,
+
     /// Last error message
     error: String,
 }
 
+#[derive(Debug)]
 enum AppCmd {
     /// Nothing to do.
     Nothing,
@@ -97,7 +105,13 @@ enum AppCmd {
 
     /// Cursor position has been changed, redraw screen if scrolled
     Cursor,
+
+    /// Something else has changed, e.g. selection. Redisplay.
+    Display,
 }
+
+const PREDICTION_SHOW_RAD: usize = 2;
+const MAX_PREDICTIONS_SHOWN: usize = 2 * PREDICTION_SHOW_RAD + 1;
 
 impl App {
     /// Load the input file into the block if it exists.
@@ -115,7 +129,7 @@ impl App {
         let mut temp = String::new();
         let _ = file.read_to_string(&mut temp)?;
 
-        self.block.append_iter(temp.chars());
+        self.block.enter_iter(temp.chars());
         self.block.move_start();
 
         Ok(())
@@ -218,6 +232,44 @@ impl App {
                 self.block.delete(1);
                 AppCmd::Document
             }
+
+            Input::KeyNPage => {
+                if let Some(selected) = &mut self.selected_predition {
+                    if *selected + 1 < self.predictions.len() {
+                        *selected += 1;
+                        return AppCmd::Display;
+                    }
+                } else {
+                    if !self.predictions.is_empty() {
+                        self.selected_predition = Some(0);
+                        return AppCmd::Display;
+                    }
+                }
+                AppCmd::Nothing
+            }
+
+            Input::KeyPPage => {
+                if let Some(selected) = &mut self.selected_predition {
+                    if *selected > 0 {
+                        *selected -= 1;
+                        return AppCmd::Display;
+                    }
+                } else {
+                    if !self.predictions.is_empty() {
+                        self.selected_predition = Some(0);
+                        return AppCmd::Display;
+                    }
+                }
+                AppCmd::Nothing
+            }
+            Input::KeyBTab | Input::KeySTab => {
+                if let Some(selected) = self.selected_predition {
+                    self.block.enter_iter(self.predictions[selected].chars());
+                    return AppCmd::Document;
+                }
+                AppCmd::Nothing
+            }
+
             Input::Character(c) => {
                 self.block.enter(c);
                 AppCmd::Document
@@ -324,7 +376,9 @@ impl App {
     }
 
     /// Compute the cached cursor position on screen from the cursor position in the block.
-    fn update_cursor(&mut self, win: &Window) {
+    ///
+    /// Return true if a full redisplay is required. Return false if only the cursor needs to move.
+    fn update_cursor(&mut self, win: &Window) -> bool {
         let old_doc_line = self.cursor_doc_line;
         let cursor_index = self.block.cursor();
         'outer: for (line_nr, line) in self.document.iter().enumerate() {
@@ -341,8 +395,7 @@ impl App {
 
         // If the cursor only moved horizontally, just move it
         if old_doc_line == self.cursor_doc_line {
-            self.move_cursor(win);
-            return;
+            return false;
         }
 
         let display_height = self.display_height(win);
@@ -351,13 +404,12 @@ impl App {
             let lines = self.cursor_doc_line - old_doc_line;
             if self.cursor_win_line + lines < display_height {
                 self.cursor_win_line += lines;
-                self.move_cursor(win);
+                return false;
             } else {
                 // Cursor would be outside the display. Place it on the last line and redraw.
                 self.cursor_win_line = display_height - 1;
-                self.display(win);
+                return true;
             }
-            return;
         }
 
         // Document cursor has moved backwards. Can the win cursor just moved too?
@@ -365,11 +417,11 @@ impl App {
             let lines = old_doc_line - self.cursor_doc_line;
             if self.cursor_win_line >= lines {
                 self.cursor_win_line -= lines;
-                self.move_cursor(win);
+                return false;
             } else {
                 // Cursor would be outside the display. Place it on the first line and redraw.
                 self.cursor_win_line = 0;
-                self.display(win);
+                return true;
             }
         }
     }
@@ -516,10 +568,37 @@ impl App {
         }
     }
 
+    /// Compute the list of predictions at the cursor position
+    ///
+    /// Return true, if a complete redisplay is required. Return false, if only the cursor position
+    /// needs to be changed.
+    fn update_prediction(&mut self) -> bool {
+        let symbols = self.block.predictions_at_cursor();
+        // Get possible prediction strings from style sheet
+        let predictions = symbols
+            .iter()
+            .flat_map(|sym| self.style_sheet.predictions(*sym))
+            .collect();
+
+        let res = self.predictions != predictions;
+        if res {
+            self.predictions = predictions;
+            self.selected_predition = None;
+        }
+        res
+    }
+
     fn display_height(&self, win: &Window) -> usize {
         let win_height = win.get_max_y() as usize;
-        // Leave one line for the error message
-        win_height - 1
+
+        // If there are predictions, show some and a separator
+        if self.predictions.is_empty() {
+            // Leave one line for the error message
+            win_height - 1
+        } else {
+            // Leave one line for the error message, one for the separator and some for the predictions
+            win_height - 2 - MAX_PREDICTIONS_SHOWN
+        }
     }
 
     /// Display the current state of the app to the window
@@ -540,13 +619,57 @@ impl App {
                 break;
             }
         }
+
+        // Show predictions
+        let mut error_line = display_height;
+        if !self.predictions.is_empty() {
+            // Draw a separator with instructions
+            win.mv(display_height as i32, 0);
+            win.attron(pancurses::A_REVERSE);
+            win.addstr( "Suggested input: (Press Page Up / Page Down to select. Press Shift-Tab to insert.)");
+            win.hline(' ', win.get_max_x());
+            win.attroff(pancurses::A_REVERSE);
+            error_line += MAX_PREDICTIONS_SHOWN;
+
+            // If no prediction is selected, draw the first few.
+            let (start, end, highlight) = if let Some(selected) = self.selected_predition {
+                let start = if selected > PREDICTION_SHOW_RAD {
+                    selected - PREDICTION_SHOW_RAD
+                } else {
+                    0
+                };
+                let end = std::cmp::min(self.predictions.len(), start + MAX_PREDICTIONS_SHOWN);
+                let highlight = selected - start;
+                (start, end, highlight)
+            } else {
+                (
+                    0,
+                    std::cmp::min(self.predictions.len(), MAX_PREDICTIONS_SHOWN),
+                    MAX_PREDICTIONS_SHOWN,
+                )
+            };
+
+            for i in start..end {
+                let offs = i - start;
+                let is_selection = offs == highlight;
+                win.mv((display_height + 1 + offs) as i32, 0);
+                if is_selection {
+                    win.attron(pancurses::A_UNDERLINE);
+                }
+                win.addstr(&self.predictions[i]);
+                if is_selection {
+                    win.attroff(pancurses::A_UNDERLINE);
+                }
+            }
+        }
+
         win.attron(pancurses::A_REVERSE);
-        win.mvaddnstr(display_height as i32, 0, &self.error, win.get_max_x());
+        win.mvaddnstr(error_line as i32, 0, &self.error, win.get_max_x());
         win.attroff(pancurses::A_REVERSE);
-        self.move_cursor(win);
     }
 
     fn move_cursor(&self, win: &Window) {
+        trace!("Cursor to ({},{})", self.cursor_win_line, self.cursor_col);
         win.mv(self.cursor_win_line as i32, self.cursor_col as i32);
     }
 }
@@ -580,6 +703,8 @@ fn main() {
         cursor_doc_line: 0,
         cursor_win_line: 0,
         cursor_col: 0,
+        predictions: Vec::new(),
+        selected_predition: None,
     };
 
     // Load the file in the buffer if it exists
@@ -606,22 +731,38 @@ fn main() {
 
     app.update_document(win.get_max_x() as usize);
     app.display(&win);
+    app.move_cursor(&win);
     win.refresh();
 
     loop {
         if let Some(input) = win.getch() {
-            match app.handle_input(input) {
+            let app_cmd = app.handle_input(input);
+            trace!("{:?}", app_cmd);
+            match app_cmd {
                 AppCmd::Nothing => {
                     // Don't do anything
                 }
                 AppCmd::Quit => break,
+                AppCmd::Display => {
+                    app.display(&win);
+                    app.move_cursor(&win);
+                    win.refresh();
+                }
                 AppCmd::Cursor => {
-                    app.update_cursor(&win);
+                    let pred_redisplay = app.update_prediction();
+                    let scroll_redisplay = app.update_cursor(&win);
+                    if pred_redisplay || scroll_redisplay {
+                        app.display(&win);
+                    }
+                    app.move_cursor(&win);
                     win.refresh();
                 }
                 AppCmd::Document => {
                     app.update_document(win.get_max_x() as usize);
+                    let _ = app.update_prediction();
+                    let _ = app.update_cursor(&win);
                     app.display(&win);
+                    app.move_cursor(&win);
                     win.refresh();
                 }
             }
