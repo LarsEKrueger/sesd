@@ -186,4 +186,9 @@ where
         use std::iter::FromIterator;
         String::from_iter(self.buffer.span(start, end).iter())
     }
+
+    /// Buffer as byte vector
+    pub fn as_string(&self) -> String {
+        self.buffer.as_string()
+    }
 }

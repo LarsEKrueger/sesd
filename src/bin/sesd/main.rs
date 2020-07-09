@@ -29,14 +29,14 @@ extern crate itertools;
 
 use libc;
 use std::fs::OpenOptions;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 
 use pancurses::{endwin, initscr, noecho, Input, Window};
 use structopt::StructOpt;
 
-use sesd::{char::CharMatcher, CstIterItem, CstIterItemNode, SymbolId, SyncBlock};
+use sesd::{char::CharMatcher, CstIterItem, SymbolId, SyncBlock};
 
 mod cargo_toml;
 mod style_sheet;
@@ -90,6 +90,9 @@ struct App {
 
     /// Last error message
     error: String,
+
+    /// Name of file being edited
+    filename: PathBuf,
 }
 
 #[derive(Debug)]
@@ -150,6 +153,18 @@ impl App {
     fn load_input(&mut self, cmd_line: &CommandLine) {
         let res = self.load_input_internal(cmd_line);
         self.set_error(res);
+    }
+
+    /// Overwrite the given file with the current buffer content
+    fn save_file(&self) -> Result<(), String> {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .custom_flags(libc::O_EXCL)
+            .open(&self.filename)
+            .map_err(|e| e.to_string())?;
+        file.write(self.block.as_string().as_bytes())
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     /// Process the input character
@@ -269,6 +284,23 @@ impl App {
                 }
                 AppCmd::Nothing
             }
+
+            Input::KeyF2 => {
+                self.error = match self.save_file() {
+                    Ok(_) => format!(
+                        "Successfully saved »{}«.",
+                        self.filename.to_string_lossy()
+                    ),
+                    Err(msg) => format!(
+                        "Error saving file »{}«: {}",
+                        self.filename.to_string_lossy(),
+                        msg
+                    ),
+                };
+                AppCmd::Display
+            }
+
+            Input::KeyF10 => AppCmd::Quit,
 
             Input::Character(c) => {
                 self.block.enter(c);
@@ -688,12 +720,15 @@ fn main() {
     });
 
     let cmd_line = CommandLine::from_args();
-    eprintln!("{:?}", cmd_line);
+    debug!("{:?}", cmd_line);
     let grammar = cargo_toml::grammar();
     let style_sheet = cargo_toml::style_sheet(&grammar);
 
     // Set the locale so that UTF-8 codepoints appear correctly
     unsafe { libc::setlocale(libc::LC_ALL, NUL_BYTE_ARRAY[..].as_ptr()) };
+
+    // Deactivate pressing Ctrl-C
+    unsafe { libc::signal(libc::SIGINT, libc::SIG_IGN) };
 
     let mut app = App {
         block: Block::new(grammar),
@@ -705,6 +740,7 @@ fn main() {
         cursor_col: 0,
         predictions: Vec::new(),
         selected_predition: None,
+        filename: cmd_line.input.clone(),
     };
 
     // Load the file in the buffer if it exists
@@ -736,6 +772,7 @@ fn main() {
 
     loop {
         if let Some(input) = win.getch() {
+            app.error = String::new();
             let app_cmd = app.handle_input(input);
             trace!("{:?}", app_cmd);
             match app_cmd {

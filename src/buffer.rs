@@ -196,6 +196,12 @@ impl<T> Buffer<T> {
     }
 }
 
+impl Buffer<char> {
+    pub fn as_string(&self) -> String {
+        self.tokens.iter().collect()
+    }
+}
+
 impl<T> Buffer<T>
 where
     T: Clone,
