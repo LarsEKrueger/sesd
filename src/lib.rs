@@ -30,12 +30,13 @@ mod grammar;
 mod parser;
 
 use buffer::Buffer;
-pub use grammar::{CompiledGrammar, DottedRule, Grammar, Matcher, Symbol, SymbolId, ERROR_ID};
-use parser::Parser;
-pub use parser::{CstIter, CstIterItem, CstIterItemNode, CstPath};
+pub use grammar::{
+    CompiledGrammar, DottedRule, Error, Grammar, Matcher, Rule, Symbol, SymbolId, ERROR_ID,
+};
+pub use parser::{CstIter, CstIterItem, CstIterItemNode, CstPath, Parser, Verdict};
 
-/// Editor Block with Synchronous Parsing
-pub struct SyncBlock<T, M>
+/// Editor with synchronous parsing.
+pub struct SynchronousEditor<T, M>
 where
     M: Matcher<T>,
 {
@@ -43,7 +44,7 @@ where
     parser: Parser<T, M>,
 }
 
-impl<T, M> SyncBlock<T, M>
+impl<T, M> SynchronousEditor<T, M>
 where
     T: Clone,
     M: Matcher<T> + Clone,
@@ -76,7 +77,7 @@ where
         self.reparse(c);
     }
 
-    pub fn reparse(&mut self, start: usize) {
+    fn reparse(&mut self, start: usize) {
         for (i, t) in self.buffer.token_from_iter(start) {
             self.parser.update(i, t.clone());
         }
@@ -178,7 +179,7 @@ where
     }
 }
 
-impl<M> SyncBlock<char, M>
+impl<M> SynchronousEditor<char, M>
 where
     M: Matcher<char>,
 {

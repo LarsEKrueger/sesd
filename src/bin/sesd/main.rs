@@ -36,7 +36,7 @@ use std::path::PathBuf;
 use pancurses::{endwin, initscr, noecho, Input, Window};
 use structopt::StructOpt;
 
-use sesd::{char::CharMatcher, CstIterItem, SymbolId, SyncBlock};
+use sesd::{char::CharMatcher, CstIterItem, SymbolId, SynchronousEditor};
 
 mod cargo_toml;
 mod style_sheet;
@@ -50,20 +50,20 @@ struct CommandLine {
     input: PathBuf,
 }
 
-type Block = SyncBlock<char, CharMatcher>;
+type Editor = SynchronousEditor<char, CharMatcher>;
 
 /// Syntactical element to be displayed
 struct SynElement {
     attr: pancurses::Attributes,
     text: String,
-    /// Index into block where the element starts
+    /// Buffer position where the element starts
     start: usize,
 }
 
 /// All state of the edit app
 struct App {
-    /// Editable block of text in memory
-    block: Block,
+    /// Editor in memory
+    editor: Editor,
 
     /// Style sheet
     style_sheet: style_sheet::StyleSheet,
@@ -117,12 +117,12 @@ const PREDICTION_SHOW_RAD: usize = 2;
 const MAX_PREDICTIONS_SHOWN: usize = 2 * PREDICTION_SHOW_RAD + 1;
 
 impl App {
-    /// Load the input file into the block if it exists.
+    /// Load the input file into the editor if it exists.
     ///
     /// Internal helper method that returns the error message
     fn load_input_internal(&mut self, cmd_line: &CommandLine) -> std::io::Result<()> {
         // Delete everything in case this is used for reverting all changes
-        self.block.clear();
+        self.editor.clear();
 
         let mut file = OpenOptions::new()
             .read(true)
@@ -132,8 +132,8 @@ impl App {
         let mut temp = String::new();
         let _ = file.read_to_string(&mut temp)?;
 
-        self.block.enter_iter(temp.chars());
-        self.block.move_start();
+        self.editor.enter_iter(temp.chars());
+        self.editor.move_start();
 
         Ok(())
     }
@@ -149,7 +149,7 @@ impl App {
         }
     }
 
-    /// Load the input file into the block if it exists. Sets error message
+    /// Load the input file into the editor if it exists. Sets error message
     fn load_input(&mut self, cmd_line: &CommandLine) {
         let res = self.load_input_internal(cmd_line);
         self.set_error(res);
@@ -162,7 +162,7 @@ impl App {
             .custom_flags(libc::O_EXCL)
             .open(&self.filename)
             .map_err(|e| e.to_string())?;
-        file.write(self.block.as_string().as_bytes())
+        file.write(self.editor.as_string().as_bytes())
             .map_err(|e| e.to_string())?;
         Ok(())
     }
@@ -174,35 +174,35 @@ impl App {
         trace!("{:?}", ch);
         match ch {
             Input::KeyLeft => {
-                self.block.move_backward(1);
+                self.editor.move_backward(1);
                 AppCmd::Cursor
             }
             Input::KeyRight => {
-                self.block.move_forward(1);
+                self.editor.move_forward(1);
                 AppCmd::Cursor
             }
             Input::KeyHome => {
-                self.block.skip_backward(sesd::char::start_of_line);
+                self.editor.skip_backward(sesd::char::start_of_line);
                 AppCmd::Cursor
             }
             Input::KeyEnd => {
-                self.block.skip_forward(sesd::char::end_of_line);
+                self.editor.skip_forward(sesd::char::end_of_line);
                 AppCmd::Cursor
             }
             Input::KeyUp => {
                 let col = self.cursor_col;
                 if let Some(this_start) = self
-                    .block
-                    .search_backward(self.block.cursor(), sesd::char::start_of_line)
+                    .editor
+                    .search_backward(self.editor.cursor(), sesd::char::start_of_line)
                 {
                     if this_start > 0 {
                         let prev_end = this_start - 1;
                         if let Some(prev_start) = self
-                            .block
+                            .editor
                             .search_backward(prev_end, sesd::char::start_of_line)
                         {
-                            if prev_start <= prev_end && prev_end < self.block.cursor() {
-                                self.block.set_cursor(if prev_start + col <= prev_end {
+                            if prev_start <= prev_end && prev_end < self.editor.cursor() {
+                                self.editor.set_cursor(if prev_start + col <= prev_end {
                                     prev_start + col
                                 } else {
                                     prev_end
@@ -217,16 +217,16 @@ impl App {
             Input::KeyDown => {
                 let col = self.cursor_col;
                 if let Some(this_end) = self
-                    .block
-                    .search_forward(self.block.cursor(), sesd::char::end_of_line)
+                    .editor
+                    .search_forward(self.editor.cursor(), sesd::char::end_of_line)
                 {
                     let next_start = this_end + 1;
                     if let Some(next_end) = self
-                        .block
+                        .editor
                         .search_forward(next_start, sesd::char::end_of_line)
                     {
-                        if next_start <= next_end && self.block.cursor() < next_start {
-                            self.block.set_cursor(if next_start + col <= next_end {
+                        if next_start <= next_end && self.editor.cursor() < next_start {
+                            self.editor.set_cursor(if next_start + col <= next_end {
                                 next_start + col
                             } else {
                                 next_end
@@ -238,13 +238,13 @@ impl App {
                 AppCmd::Nothing
             }
             Input::KeyBackspace => {
-                if self.block.move_backward(1) {
-                    self.block.delete(1);
+                if self.editor.move_backward(1) {
+                    self.editor.delete(1);
                 }
                 AppCmd::Document
             }
             Input::KeyDC => {
-                self.block.delete(1);
+                self.editor.delete(1);
                 AppCmd::Document
             }
 
@@ -279,7 +279,7 @@ impl App {
             }
             Input::KeyBTab | Input::KeySTab => {
                 if let Some(selected) = self.selected_predition {
-                    self.block.enter_iter(self.predictions[selected].chars());
+                    self.editor.enter_iter(self.predictions[selected].chars());
                     return AppCmd::Document;
                 }
                 AppCmd::Nothing
@@ -303,7 +303,7 @@ impl App {
             Input::KeyF10 => AppCmd::Quit,
 
             Input::Character(c) => {
-                self.block.enter(c);
+                self.editor.enter(c);
                 AppCmd::Document
             }
             _ => AppCmd::Nothing,
@@ -315,7 +315,7 @@ impl App {
     /// Return None, if the cursor is not inside this node. Return the line and column of the
     /// document if it is inside.
     fn render_node(
-        block: &Block,
+        editor: &Editor,
         document: &mut Vec<Vec<SynElement>>,
         line_nr: &mut usize,
         line_len: &mut usize,
@@ -327,7 +327,7 @@ impl App {
     ) -> Option<(usize, usize)> {
         let mut res = None;
 
-        let mut text = block.span_string(start, end);
+        let mut text = editor.span_string(start, end);
         if style.line_break_before {
             *line_nr += 1;
             document.push(Vec::new());
@@ -407,12 +407,12 @@ impl App {
         res
     }
 
-    /// Compute the cached cursor position on screen from the cursor position in the block.
+    /// Compute the cached cursor position on screen from the cursor position in the editor.
     ///
     /// Return true if a full redisplay is required. Return false if only the cursor needs to move.
     fn update_cursor(&mut self, win: &Window) -> bool {
         let old_doc_line = self.cursor_doc_line;
-        let cursor_index = self.block.cursor();
+        let cursor_index = self.editor.cursor();
         'outer: for (line_nr, line) in self.document.iter().enumerate() {
             let mut line_len = 0;
             for se in line.iter() {
@@ -465,13 +465,13 @@ impl App {
         // Log the parse tree
         if log_enabled!(log::Level::Trace) {
             trace!("update_document CST");
-            for cst_node in self.block.cst_iter() {
+            for cst_node in self.editor.cst_iter() {
                 match cst_node {
                     sesd::CstIterItem::Parsed(item) => {
                         if item.end - item.start > 0 {
                             trace!(
                                 "{}, {}-{}",
-                                self.block
+                                self.editor
                                     .grammar()
                                     .dotted_rule_to_string(&item.dotted_rule)
                                     .unwrap(),
@@ -479,23 +479,23 @@ impl App {
                                 item.end
                             );
                             for n in item.path_iter() {
-                                let dr = self.block.parser().dotted_rule(n);
+                                let dr = self.editor.parser().dotted_rule(n);
                                 trace!(
                                     "   {}",
-                                    self.block.grammar().dotted_rule_to_string(&dr).unwrap()
+                                    self.editor.grammar().dotted_rule_to_string(&dr).unwrap()
                                 );
                             }
                         }
                     }
                     sesd::CstIterItem::Unparsed(start) => {
-                        trace!("Unparsed: {} - {}", start, self.block.len());
+                        trace!("Unparsed: {} - {}", start, self.editor.len());
                     }
                 }
             }
         }
 
         // Compute the cursor position on the fly.
-        let cursor_index = self.block.cursor();
+        let cursor_index = self.editor.cursor();
 
         // Traverse the parse tree. If there are items that have no style in the style sheet, draw
         // them and mark until which index, the input has been drawn already. Skip all entries that
@@ -504,13 +504,13 @@ impl App {
         let mut line_len = 0;
         let mut rendered_until = 0;
         trace!("update_document render");
-        for cst_node in self.block.cst_iter() {
+        for cst_node in self.editor.cst_iter() {
             match cst_node {
                 CstIterItem::Parsed(cst_node) => {
                     trace!(
                         "{}: {}, {}-{}",
                         rendered_until,
-                        self.block
+                        self.editor
                             .grammar()
                             .dotted_rule_to_string(&cst_node.dotted_rule)
                             .unwrap(),
@@ -532,17 +532,21 @@ impl App {
                             .0
                             .iter()
                             .map(|n| {
-                                let dr = self.block.parser().dotted_rule(&n);
-                                self.block.grammar().lhs(dr.rule)
+                                let dr = self.editor.parser().dotted_rule(&n);
+                                self.editor.grammar().lhs(dr.rule as usize)
                             })
                             .collect();
-                        path.push(self.block.grammar().lhs(cst_node.dotted_rule.rule));
+                        path.push(
+                            self.editor
+                                .grammar()
+                                .lhs(cst_node.dotted_rule.rule as usize),
+                        );
 
                         // Log the lookup path as readable
                         if log_enabled!(log::Level::Trace) {
                             trace!("lookup: {:?}", path);
                             for p in path.iter() {
-                                trace!("  {:?}", self.block.grammar().nt_name(*p));
+                                trace!("  {:?}", self.editor.grammar().nt_name(*p));
                             }
                         }
 
@@ -555,7 +559,7 @@ impl App {
                             LookedUp::Found(style) => {
                                 // Found an exact match. Render with style.
                                 if let Some((row, col)) = Self::render_node(
-                                    &self.block,
+                                    &self.editor,
                                     &mut self.document,
                                     &mut line_nr,
                                     &mut line_len,
@@ -574,7 +578,7 @@ impl App {
                             LookedUp::Nothing => {
                                 // Found nothing. Render with default style.
                                 if let Some((row, col)) = Self::render_node(
-                                    &self.block,
+                                    &self.editor,
                                     &mut self.document,
                                     &mut line_nr,
                                     &mut line_len,
@@ -605,7 +609,7 @@ impl App {
     /// Return true, if a complete redisplay is required. Return false, if only the cursor position
     /// needs to be changed.
     fn update_prediction(&mut self) -> bool {
-        let symbols = self.block.predictions_at_cursor();
+        let symbols = self.editor.predictions_at_cursor();
         // Get possible prediction strings from style sheet
         let predictions = symbols
             .iter()
@@ -731,7 +735,7 @@ fn main() {
     unsafe { libc::signal(libc::SIGINT, libc::SIG_IGN) };
 
     let mut app = App {
-        block: Block::new(grammar),
+        editor: Editor::new(grammar),
         error: String::new(),
         document: Vec::new(),
         style_sheet,
