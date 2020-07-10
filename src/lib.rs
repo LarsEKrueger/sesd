@@ -137,7 +137,7 @@ where
     ///
     /// Return None, if the index wasn't found. Otherwise, return the index at which the predicate
     /// became true.
-    pub fn search_forward<F>(&self, start: usize, mut until: F) -> Option<usize>
+    pub fn search_forward<F>(&self, start: usize, until: F) -> Option<usize>
     where
         F: FnMut(&Vec<T>, usize) -> bool,
     {
@@ -150,7 +150,7 @@ where
     ///
     /// Return None, if the index wasn't found. Otherwise, return the index at which the predicate
     /// became true.
-    pub fn search_backward<F>(&self, start: usize, mut until: F) -> Option<usize>
+    pub fn search_backward<F>(&self, start: usize, until: F) -> Option<usize>
     where
         F: FnMut(&Vec<T>, usize) -> bool,
     {

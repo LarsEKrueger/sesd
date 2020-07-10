@@ -47,17 +47,17 @@ impl Matcher<char> for CharMatcher {
 /// Check if the character before the index is a newline.
 ///
 /// Predicate for skip_backward.
-pub fn start_of_line(buffer: &Vec<char>, index: usize) -> bool {
-    if index == 0 {
+pub fn start_of_line(buffer: &Vec<char>, position: usize) -> bool {
+    if position == 0 {
         return true;
     }
-    buffer[index - 1] == '\n'
+    buffer[position - 1] == '\n'
 }
 
 /// Check if the character at the index is a newline
 ///
 /// Predicate for skip_forward
-pub fn end_of_line(buffer: &Vec<char>, index: usize) -> bool {
-    debug_assert!(index < buffer.len());
-    buffer[index] == '\n'
+pub fn end_of_line(buffer: &Vec<char>, position: usize) -> bool {
+    debug_assert!(position < buffer.len());
+    buffer[position] == '\n'
 }

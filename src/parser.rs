@@ -573,7 +573,7 @@ where
             .rev()
             .filter_map(|state| {
                 if state.0.is_first() {
-                    Some(self.grammar.lhs(state.0.rule))
+                    Some(self.grammar.lhs(state.0.rule as usize))
                 } else {
                     None
                 }
@@ -1052,7 +1052,7 @@ mod tests {
     /// Test error handling
     ///
     /// S = A B
-    /// A = a A   # Recovery rule
+    /// A = a A
     /// A = a
     /// B = b
     /// B = c
@@ -1076,7 +1076,7 @@ mod tests {
         use CharMatcher::*;
         use Verdict::*;
         grammar.set_start("S".to_string());
-        grammar.add(Rule::new("S").nt("A").nt("B").recover());
+        grammar.add(Rule::new("S").nt("A").nt("B"));
         grammar.add(Rule::new("A").t(Exact('a')).nt("A"));
         grammar.add(Rule::new("A").t(Exact('a')));
         grammar.add(Rule::new("B").t(Exact('b')));
@@ -1137,7 +1137,7 @@ mod tests {
                 }
                 CstIterItem::Parsed(cst_node) => {
                     let r = cst_node.dotted_rule.rule;
-                    let s = parser.grammar.lhs(r);
+                    let s = parser.grammar.lhs(r as usize);
                     let name = parser.grammar.nt_name(s);
                     eprintln!("{:?} / {} <=> {:?}", cst_node, name, gt);
                     assert_eq!(name, gt.0);
@@ -1235,7 +1235,7 @@ mod tests {
                 }
                 CstIterItem::Parsed(cst_node) => {
                     let r = cst_node.dotted_rule.rule;
-                    let s = parser.grammar.lhs(r);
+                    let s = parser.grammar.lhs(r as usize);
                     let name = parser.grammar.nt_name(s);
                     eprintln!("{:?} / {} <=> {:?}", cst_node, name, gt);
                     assert_eq!(name, gt.0);
@@ -1298,7 +1298,7 @@ mod tests {
                 }
                 CstIterItem::Parsed(cst_node) => {
                     let r = cst_node.dotted_rule.rule;
-                    let s = parser.grammar.lhs(r);
+                    let s = parser.grammar.lhs(r as usize);
                     let name = parser.grammar.nt_name(s);
                     eprintln!("{:?} / {} <=> {:?}", cst_node, name, gt);
                     assert_eq!(name, gt.0);

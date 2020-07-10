@@ -71,7 +71,6 @@ pub enum Symbol<M> {
 #[derive(Debug)]
 pub struct Rule<M> {
     lhs: String,
-    is_recovery: bool,
     rhs: Vec<Symbol<M>>,
 }
 
@@ -101,11 +100,11 @@ where
 }
 
 /// Symbol IDs are indices into the symbol table. As such, the can be fairly small integers to
-/// same space. 32 bit should be sufficient for all purposed.
-pub type SymbolId = u32;
+/// save space. 16 bit should be sufficient for all purposes. If not, file a feature request.
+pub type SymbolId = u16;
 
 /// Number of symbol ids.
-const MAX_SYMBOL_ID: u32 = std::u32::MAX;
+const MAX_SYMBOL_ID: SymbolId = std::u16::MAX;
 
 /// ID of the pseudo-non-terminal to represent parsing errors
 pub const ERROR_ID: SymbolId = 0;
@@ -129,13 +128,10 @@ where
     /// non-terminal. Otherwise it's a terminal.
     ///
     /// TODO: Flatten this.
-    pub rules: Vec<(SymbolId, Vec<SymbolId>)>,
-
-    /// List of rule indices that should be used for error recovery
-    pub recovery: Vec<SymbolId>,
+    rules: Vec<(SymbolId, Vec<SymbolId>)>,
 
     /// Index of start symbol
-    pub start: SymbolId,
+    start: SymbolId,
 
     /// Marker to indicate the T is used indirectly by Matcher
     _marker: std::marker::PhantomData<T>,
@@ -201,11 +197,7 @@ where
     ///
     /// Obsolete interface
     pub fn add_rule(&mut self, lhs: String, rhs: Vec<Symbol<M>>) {
-        self.rules.push(Rule {
-            lhs,
-            is_recovery: false,
-            rhs,
-        });
+        self.rules.push(Rule { lhs, rhs });
     }
 
     /// Add a rule
@@ -299,9 +291,8 @@ where
             ));
         }
 
-        // Build the rules and the recovery list at the same time
+        // Build the rules
         let mut rules: Vec<(SymbolId, Vec<SymbolId>)> = Vec::new();
-        let mut recovery = Vec::new();
 
         // The first rule (id = 0) is a pseudo-rule for error handling.
         rules.push((ERROR_ID, Vec::new()));
@@ -328,10 +319,6 @@ where
                 })
                 .collect();
 
-            if rule.is_recovery {
-                let id = rules.len() as SymbolId;
-                recovery.push(id);
-            }
             rules.push((lhs_id as SymbolId, rhs_id))
         }
 
@@ -346,7 +333,6 @@ where
             nonterminal_table,
             terminal_table,
             rules,
-            recovery,
             start,
             _marker: PhantomData,
         })
@@ -357,7 +343,6 @@ impl<M> Rule<M> {
     pub fn new(lhs: &str) -> Self {
         Self {
             lhs: lhs.to_string(),
-            is_recovery: false,
             rhs: Vec::new(),
         }
     }
@@ -372,10 +357,6 @@ impl<M> Rule<M> {
         self
     }
 
-    pub fn recover(mut self) -> Self {
-        self.is_recovery = true;
-        self
-    }
 }
 
 impl<T, M> CompiledGrammar<T, M>
@@ -437,7 +418,7 @@ where
                 return i as SymbolId;
             }
         }
-        std::u32::MAX
+        MAX_SYMBOL_ID
     }
 
     /// Convert a list of non-terminal names to SymbolIds.
@@ -447,9 +428,9 @@ where
         names.iter().map(|n| self.nt_id(n)).collect()
     }
 
-    /// Get the lhs of a rule
-    pub fn lhs(&self, rule: SymbolId) -> SymbolId {
-        self.rules[rule as usize].0
+    /// Get the lhs of rule with index `i`
+    pub fn lhs(&self, i: usize) -> SymbolId {
+        self.rules[i as usize].0
     }
 }
 
