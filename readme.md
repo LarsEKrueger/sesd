@@ -123,14 +123,15 @@ The roadmap is defined in terms of features of the [demo
 program](src/bin/sesd/readme.md). This directly corresponds to the library
 features that implement them.
 
-* [ ] 0.1 - Simple syntax directed editor
+* [X] 0.1 - Simple syntax directed editor
     * One, compiled-in language
 * [ ] 0.2 - General syntax directed editor
     * Dynamically loaded grammars and templates
 
 # TODO
 
-* [ ] BUG: Wrapping long lines don't work correctly.
+* [ ] Consistent and unambigous names for the various types of indices.
+* [ ] BUG: Wrapping long lines doesn't work correctly.
 * [ ] Compile grammar tables using macros (no dynamic memory)
 * [ ] Join style sheet and parser
 * [ ] Reduce number of allocations

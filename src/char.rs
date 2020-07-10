@@ -22,10 +22,13 @@
     SOFTWARE.
 */
 
-//! Matcher for `char`
+//! Matcher trait implementation for token `char`.
+//!
+//! Provides exact and range matches.
 
 use super::grammar::Matcher;
 
+/// Matches single characters or ranges
 #[derive(Clone, PartialEq, PartialOrd, Eq, Ord, Hash, Debug)]
 pub enum CharMatcher {
     /// Match a single char
@@ -44,7 +47,7 @@ impl Matcher<char> for CharMatcher {
     }
 }
 
-/// Check if the character before the index is a newline.
+/// Check if the character before the buffer position is a newline.
 ///
 /// Predicate for skip_backward.
 pub fn start_of_line(buffer: &Vec<char>, position: usize) -> bool {
@@ -54,7 +57,7 @@ pub fn start_of_line(buffer: &Vec<char>, position: usize) -> bool {
     buffer[position - 1] == '\n'
 }
 
-/// Check if the character at the index is a newline
+/// Check if the character at the buffer position is a newline
 ///
 /// Predicate for skip_forward
 pub fn end_of_line(buffer: &Vec<char>, position: usize) -> bool {
