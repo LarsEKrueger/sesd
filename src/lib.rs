@@ -47,8 +47,8 @@
 //!
 //! # Examples
 //!
-//! The following example does not use a complete grammar due to size. Check the unit tests for
-//! full examples.
+//! The following example uses a very simple grammar due to size. Check the unit tests for
+//! bigger examples.
 //!
 //! ```
 //! use sesd::{char::CharMatcher, Grammar, Parser, Rule, Verdict};
@@ -57,9 +57,9 @@
 //! let mut grammar: Grammar<char, CharMatcher> = Grammar::new();
 //!
 //! grammar.set_start("S".to_string());
-//! // S -> Noun ' ' Noun
+//! // S ::= Noun ' ' Noun
 //! grammar.add( Rule::new( "S").nt("Noun").t(Exact(' ')).nt("Noun"));
-//! // Noun -> 'j' 'o' 'h' 'n'
+//! // Noun ::= 'j' 'o' 'h' 'n'
 //! grammar.add( Rule::new( "Noun").
 //!         t(Exact('j')).
 //!         t(Exact('o')).
@@ -69,16 +69,14 @@
 //! let compiled_grammar = grammar.compile().expect("compilation should have worked");
 //!
 //! let mut parser = Parser::<char, CharMatcher>::new(compiled_grammar);
-//! let mut index = 0;
+//! let mut position = 0;
 //! for (i, c) in "john joh".chars().enumerate() {
 //!     let res = parser.update(i, c);
-//!     assert!(res.is_ok());
-//!     assert_eq!(res.unwrap(), Verdict::More);
-//!     index = i;
+//!     assert_eq!(res, Verdict::More);
+//!     position = i;
 //! }
-//! let res = parser.update(index+1, 'n');
-//! assert!(res.is_ok());
-//! assert_eq!(res.unwrap(), Verdict::Accept);
+//! let res = parser.update(position+1, 'n');
+//! assert_eq!(res, Verdict::Accept);
 //! ```
 
 mod buffer;
