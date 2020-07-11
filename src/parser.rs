@@ -22,61 +22,62 @@
     SOFTWARE.
 */
 
-//! Parser to work on Buffer
+//! Earley Parser
 
 use itertools::Itertools;
 
 use super::grammar::{CompiledGrammar, CompiledSymbol, DottedRule, Matcher, SymbolId, ERROR_ID};
 
-/// Parser error codes
-#[derive(Debug)]
-pub enum Error {
-    /// Invalid index was passed to update
-    InvalidIndex,
-}
-
-/// Type alias for Results with Errors
-type Result<T> = std::result::Result<T, Error>;
-
 /// Entry in the parsing chart. Dotted rule indicate next symbol to be parsed
-/// (terminal/non-terminal). Second field is start position in the input buffer.
+/// (terminal/non-terminal). Second field is start position in the token buffer.
 ///
-/// Index is usize as to not limit the length of the input buffer.
+/// Position is usize as to not limit the length of the input buffer.
 ///
 /// TODO: Limit the size of the input buffer.
 type ChartEntry = (DottedRule, usize);
+
+/// Ordered list of states for one position of the token buffer.
 type StateList = Vec<ChartEntry>;
 
 /// Entry in the parse tree.
 ///
-/// The node of the tree are the chart entries. The edges are stored separately.
+/// The node of the tree are the parse state entries in the chart. The edges are stored separately.
 #[derive(PartialEq)]
 struct CstEdge {
-    /// Index into StateList at the buffer index where the edge originates.
+    /// Index into StateList at the buffer position where the edge originates.
     ///
     /// This allows access to the start index and the symbol
     from_state: SymbolId,
 
-    /// Index into StateList at the buffer index where the edge ends
+    /// Index into StateList at the buffer position where the edge ends
     to_state: SymbolId,
 
-    /// Buffer index where the target of the link is to be found
-    to_index: usize,
+    /// Buffer position where the target of the link is to be found
+    to_position: usize,
 }
 
+/// List of edges at a given buffer position
 type CstList = Vec<CstEdge>;
 
-/// Incrementally parse the input buffer.
+/// Earley Parser on streams.
+///
+/// Incrementally parse the input steam using the Earley Algorithm. Does not store any parsed
+/// tokens itself. If the parsed tokens cannot be reconstructed from a successful parse, they need
+/// to be stored separately.
+///
+/// It is technically possible to change the grammar on the fly, but not implemented. File a
+/// feature request if you need that.
 pub struct Parser<T, M>
 where
     M: Matcher<T>,
 {
+    /// Compiled grammar to parse.
     grammar: CompiledGrammar<T, M>,
 
     /// Parsing chart.
     ///
-    /// Outer dimension index corresponds to buffer index. Inner dimensions are the possible rules that
-    /// apply at this buffer index.
+    /// Outer dimension index corresponds to buffer position. Inner dimensions are the possible
+    /// rules that apply at this buffer index.
     ///
     /// chart[0] contains the rules that derive directly or indirectly from the start symbol. In
     /// general, chart[i+1] contain the rules that apply after buffer[i] has been processed.
@@ -93,7 +94,7 @@ where
 
     /// Number of buffer entries (from the beginning) where the parse is valid.
     ///
-    /// This value might be decreased when the buffer is changed and increased when the parser is
+    /// This value might be decreased when the buffer is changed and will increase when the parser is
     /// updated.
     ///
     /// The value is to interpreted as the index into the chart from which the scanner reads to
@@ -104,6 +105,9 @@ where
 /// Result of parser update.
 #[derive(PartialEq, Debug)]
 pub enum Verdict {
+    /// Buffer position to continue parsing was incorrect.
+    InvalidPosition,
+
     /// Need more input to decide
     More,
 
@@ -118,8 +122,8 @@ pub enum Verdict {
 #[derive(Clone, Debug)]
 pub struct CstPathNode {
     /// Index into buffer/chart
-    index: usize,
-    /// Index into chart list at that index
+    position: usize,
+    /// Index into chart list at buffer position
     state: SymbolId,
 }
 
@@ -130,25 +134,33 @@ pub struct CstPath(pub Vec<CstPathNode>);
 /// One node in the parse tree as returned by the iterator
 #[derive(Debug)]
 pub struct CstIterItemNode {
+    /// Start position of the parsed item. All tokens at positions *p* with `start` <= *p* < `end`
     pub start: usize,
+    /// End position of the parsed item. All tokens at positions *p* with `start` <= *p* < `end`
     pub end: usize,
+    /// The dotted rule that applied. The dot is right before the parser item.
     pub dotted_rule: DottedRule,
+    /// Path from the root of the parse tree to this node.
+    ///
+    /// Only contains completed rules. Does not contain the path node to locate the current node.
     pub path: CstPath,
+    /// Current node as a path node.
     pub current: CstPathNode,
 }
 
+/// Returned by the `CstIter` for each parsed element.
 #[derive(Debug)]
 pub enum CstIterItem {
-    /// Beginning at this index, the buffer has not been parsed
-    Unparsed(usize),
-
     /// A node of the parse tree
     Parsed(CstIterItemNode),
+
+    /// Beginning at this index, the buffer has not been parsed
+    Unparsed(usize),
 }
 
-/// Iterator to access the parse tree in sequential order
+/// Iterator to access the parse tree in pre-order.
 ///
-/// The items are traversed in pre-order.
+/// Returns all parsed nodes, then the index of the first unparsed position of the buffer.
 pub struct CstIter<'a, T, M>
 where
     M: Matcher<T>,
@@ -167,6 +179,9 @@ where
     done: bool,
 }
 
+/// Add an entry to a state list if the entry does not already exist.
+///
+/// Return the index into the state list.
 fn add_to_state_list(state_list: &mut StateList, entry: ChartEntry) -> SymbolId {
     for (i, e) in state_list.iter().enumerate() {
         if *e == entry {
@@ -178,6 +193,7 @@ fn add_to_state_list(state_list: &mut StateList, entry: ChartEntry) -> SymbolId 
     (res as SymbolId)
 }
 
+/// Add an entry to the CST edge list if the entry does not already exist.
 fn add_to_cst_list(cst_list: &mut CstList, entry: CstEdge) {
     for e in cst_list.iter() {
         if *e == entry {
@@ -187,6 +203,7 @@ fn add_to_cst_list(cst_list: &mut CstList, entry: CstEdge) {
     cst_list.push(entry);
 }
 
+/// Predict function of the Earley Algorithm.
 fn predict<T, M>(
     state_list: &mut StateList,
     symbol: SymbolId,
@@ -208,6 +225,7 @@ where
     T: Clone,
     M: Matcher<T> + Clone,
 {
+    /// Create a new parser, given a grammar.
     pub fn new(grammar: CompiledGrammar<T, M>) -> Self {
         // Index 0 is special: It contains all the predictions of the start symbol. As the chart is
         // only extended while parsing, chart entries before the current one aren't changed. Thus,
@@ -258,7 +276,7 @@ where
                                     CstEdge {
                                         from_state: new_state,
                                         to_state: i as SymbolId,
-                                        to_index: 0,
+                                        to_position: 0,
                                     },
                                 );
                                 // Create the CST edge how the dot moved, i.e. the sibling link. Omit
@@ -270,7 +288,7 @@ where
                                         CstEdge {
                                             from_state: new_state,
                                             to_state: rule_index as SymbolId,
-                                            to_index: start,
+                                            to_position: start,
                                         },
                                     );
                                 }
@@ -295,74 +313,69 @@ where
         }
     }
 
+    /// Borrow the grammar
     pub fn grammar<'a>(&'a self) -> &'a CompiledGrammar<T, M> {
         &self.grammar
     }
 
+    /// Get the dotted rule from a CST path node.
     pub fn dotted_rule(&self, node: &CstPathNode) -> DottedRule {
-        self.chart[node.index][node.state as usize].0.clone()
+        self.chart[node.position][node.state as usize].0.clone()
     }
 
-    /// The buffer has changed at index. All parse entries are invalid beginning with the given
-    /// index.
+    /// The buffer has changed at `position`. All parse entries are invalid beginning with the given
+    /// position.
     ///
     /// The chart will not be changed to keep the function small and fast.
-    pub fn buffer_changed(&mut self, index: usize) {
-        if index < self.valid_entries {
-            self.valid_entries = index;
+    pub fn buffer_changed(&mut self, position: usize) {
+        if position < self.valid_entries {
+            self.valid_entries = position;
         }
-    }
-
-    /// Return index of first invalid buffer index.
-    ///
-    /// Helper function for parser update function
-    pub fn parse_start(&self) -> usize {
-        self.valid_entries
     }
 
     /// Process one entry in the buffer. To support lexers/character class mappers, this function
     /// does not take the buffer directly, but just one token. The caller is respondible to ensure
     /// the token extraction is deterministc.
     ///
-    /// If the index is inside the already-parsed section, the valid part will be reset.
+    /// If the position is inside the already-parsed section, the valid part will be reset.
     ///
-    /// If the index is inside the unparsed section, an error will be returned.
+    /// If the position is inside the unparsed section, an error will be returned.
     ///
-    /// If the index is at the first unparsed position, the token will be processed.
+    /// If the position is at the first unparsed position, the token will be processed.
     ///
     /// When the terminal has been processed, the next entry is fully predicted. This allows *ruby
     /// slippers* parsing when the user requests the acceptable tokens and inserts it into the
     /// buffer before updating the parser.
     ///
-    /// The function returns if the input is accepted, rejected or still undecided.
-    pub fn update(&mut self, index: usize, token: T) -> Result<Verdict> {
-        self.buffer_changed(index);
-        if index > self.valid_entries {
-            return Err(Error::InvalidIndex);
+    /// The function returns whether the input is accepted, rejected or still undecided.
+    pub fn update(&mut self, position: usize, token: T) -> Verdict {
+        self.buffer_changed(position);
+        if position > self.valid_entries {
+            return Verdict::InvalidPosition;
         }
 
-        // Index is valid.
+        // position is valid.
         //
-        // The chart must have at least one entry more than the buffer. That means chart[index+1]
+        // The chart must have at least one entry more than the buffer. That means chart[position+1]
         // needs to exist. If everything is correct so far and we're parsing the first time,
-        // `index + 1 == chart.len()`. If we're not parsing the first time, the chart may be
+        // `position + 1 == chart.len()`. If we're not parsing the first time, the chart may be
         // longer.
-        assert!(index + 1 <= self.chart.len());
-        // Check if room for index+1 needs to be made.
-        if (index + 1) == self.chart.len() {
+        debug_assert!(position + 1 <= self.chart.len());
+        // Check if room for position+1 needs to be made.
+        if (position + 1) == self.chart.len() {
             // Should only need to add one state list
             self.chart.push(Vec::new());
-            assert!(index + 1 < self.chart.len());
+            debug_assert!(position + 1 < self.chart.len());
             self.cst.push(Vec::new());
-            assert_eq!(self.cst.len(), self.chart.len());
+            debug_assert_eq!(self.cst.len(), self.chart.len());
         }
         // Get the state list to write to in the scanner. We work on a new vector to simplify the
         // access. This will change anyway when the chart is flattened.
         let mut new_state_list = Vec::new();
-        self.chart[index + 1].clear();
+        self.chart[position + 1].clear();
 
         // Get the state list to read from
-        let state_list = &self.chart[index];
+        let state_list = &self.chart[position];
 
         // New entries for cst edge. Child edges need to come first for iterator to work. In case
         // of errors, the error links need to come first.
@@ -390,7 +403,7 @@ where
                             CstEdge {
                                 from_state: new_state,
                                 to_state: state_index as SymbolId,
-                                to_index: index,
+                                to_position: position,
                             },
                         );
                     }
@@ -403,8 +416,8 @@ where
         let mut verdict = None;
 
         // In order to handle empty rules, the chart must be used, not a separate copy.
-        let new_index = index + 1;
-        self.chart[new_index] = new_state_list;
+        let new_position = position + 1;
+        self.chart[new_position] = new_state_list;
 
         if !scanned {
             // None of the predicted symbols matched.
@@ -413,22 +426,22 @@ where
             //         predictions to the error rules.
 
             // Only process the existing entries.
-            for i in 0..self.chart[index].len() {
-                let dr = &self.chart[index][i].0;
+            for i in 0..self.chart[position].len() {
+                let dr = &self.chart[position][i].0;
                 if let CompiledSymbol::Terminal(_t) = self.grammar.dotted_symbol(&dr) {
                     // Pretend to be successful, advance the dot and store in new_state
-                    let new_entry = (dr.advance_dot(), self.chart[index][i].1);
-                    let new_state = add_to_state_list(&mut self.chart[new_index], new_entry);
+                    let new_entry = (dr.advance_dot(), self.chart[position][i].1);
+                    let new_state = add_to_state_list(&mut self.chart[new_position], new_entry);
                     // Mark as error by adding the error pseudo-rule
-                    let error_state = self.chart[new_index].len() as SymbolId;
-                    self.chart[new_index].push((DottedRule::new(ERROR_ID as usize), index));
+                    let error_state = self.chart[new_position].len() as SymbolId;
+                    self.chart[new_position].push((DottedRule::new(ERROR_ID as usize), position));
 
                     // Link pretended match to error entry. Must not be de-duplicated if multiple
                     // errors occur.
                     cst_child_list.push(CstEdge {
                         from_state: new_state,
                         to_state: error_state,
-                        to_index: new_index,
+                        to_position: new_position,
                     });
                 }
             }
@@ -440,11 +453,14 @@ where
         // access is required.
         let mut start_rule_completed = false;
         let mut i = 0;
-        while i < self.chart[new_index].len() {
-            match self.grammar.dotted_symbol(&self.chart[new_index][i].0) {
-                CompiledSymbol::NonTerminal(nt) => {
-                    predict(&mut self.chart[new_index], nt, new_index, &self.grammar)
-                }
+        while i < self.chart[new_position].len() {
+            match self.grammar.dotted_symbol(&self.chart[new_position][i].0) {
+                CompiledSymbol::NonTerminal(nt) => predict(
+                    &mut self.chart[new_position],
+                    nt,
+                    new_position,
+                    &self.grammar,
+                ),
                 CompiledSymbol::Terminal(_) => {
                     // Can't do anything as we don't know the new token.
                 }
@@ -452,7 +468,7 @@ where
                     // Complete
                     start_rule_completed =
                         start_rule_completed | self.grammar.is_start_symbol(completed);
-                    let start = self.chart[new_index][i].1;
+                    let start = self.chart[new_position][i].1;
                     // Check all the rules at *start* if the dot is at the completed symbol
                     let mut rule_index = 0;
                     while rule_index < self.chart[start].len() {
@@ -466,7 +482,7 @@ where
                                     self.chart[start][rule_index].1,
                                 );
                                 let new_state =
-                                    add_to_state_list(&mut self.chart[new_index], new_entry);
+                                    add_to_state_list(&mut self.chart[new_position], new_entry);
                                 // Create the CST edge from the completed rule to the rule that
                                 // started it, i.e. the parent/child link. Keep in mind that the
                                 // links have to go towards the older entries to keep them
@@ -476,7 +492,7 @@ where
                                     CstEdge {
                                         from_state: new_state,
                                         to_state: i as SymbolId,
-                                        to_index: new_index,
+                                        to_position: new_position,
                                     },
                                 );
                                 // Create the CST edge how the dot moved, i.e. the sibling link. Omit
@@ -488,7 +504,7 @@ where
                                         CstEdge {
                                             from_state: new_state,
                                             to_state: rule_index as SymbolId,
-                                            to_index: start,
+                                            to_position: start,
                                         },
                                     );
                                 }
@@ -501,10 +517,10 @@ where
             i += 1;
         }
 
-        self.cst[new_index] = cst_child_list;
-        self.cst[new_index].append(&mut cst_sibling_list);
+        self.cst[new_position] = cst_child_list;
+        self.cst[new_position].append(&mut cst_sibling_list);
 
-        self.valid_entries = new_index;
+        self.valid_entries = new_position;
 
         verdict = verdict.or_else(|| {
             Some(if start_rule_completed {
@@ -514,7 +530,7 @@ where
             })
         });
 
-        Ok(verdict.unwrap())
+        verdict.unwrap()
     }
 
     /// Return a pre-order CST iterator
@@ -526,15 +542,15 @@ where
         debug_assert!(self.valid_entries < self.chart.len());
         debug_assert!(self.valid_entries < self.cst.len());
         debug_assert!(self.chart.len() == self.cst.len());
-        let mut index = self.valid_entries;
-        let mut unparsed = index;
+        let mut position = self.valid_entries;
+        let mut unparsed = position;
         loop {
-            for (rule_index, rule) in self.chart[index].iter().enumerate() {
+            for (rule_index, rule) in self.chart[position].iter().enumerate() {
                 // If the rule indicates a completed start symbol, push it to the stack.
                 if self.grammar.dotted_is_completed_start(&rule.0) {
                     stack.push((
                         CstPathNode {
-                            index,
+                            position,
                             state: rule_index as SymbolId,
                         },
                         false,
@@ -544,11 +560,11 @@ where
             if !stack.is_empty() {
                 break;
             }
-            if index == 0 {
+            if position == 0 {
                 break;
             }
-            index -= 1;
-            unparsed = index;
+            position -= 1;
+            unparsed = position;
         }
 
         CstIter {
@@ -561,14 +577,14 @@ where
 
     /// Iterate through the predictions in the same order that the cst would generate them.
     ///
-    /// Return None if index is invalid
-    pub fn predictions(&self, index: usize) -> Vec<SymbolId> {
+    /// Return None if position is invalid
+    pub fn predictions(&self, position: usize) -> Vec<SymbolId> {
         debug_assert!(self.valid_entries < self.chart.len());
-        if index >= self.chart.len() {
+        if position >= self.chart.len() {
             return Vec::new();
         }
         // In ambiguous grammars, the symbols might appear multiple times
-        self.chart[index]
+        self.chart[position]
             .iter()
             .rev()
             .filter_map(|state| {
@@ -608,16 +624,17 @@ where
                 if tos.1 {
                     // TOS is complete
                     let tos = self.stack.pop().unwrap();
-                    let state = &self.parser.chart[tos.0.index][tos.0.state as usize];
+                    let state = &self.parser.chart[tos.0.position][tos.0.state as usize];
                     let start = state.1;
-                    let end = tos.0.index;
+                    let end = tos.0.position;
                     // The path is the list of completed, processed entries on the stack.
                     let path = CstPath(
                         self.stack
                             .iter()
                             .filter_map(|(node, processed)| {
                                 let is_result = if *processed {
-                                    let dr = &self.parser.chart[node.index][node.state as usize].0;
+                                    let dr =
+                                        &self.parser.chart[node.position][node.state as usize].0;
                                     self.parser.grammar.dotted_symbol(dr).is_complete()
                                 } else {
                                     false
@@ -644,11 +661,11 @@ where
                     tos.1 = true;
                     // Find the edges and put the node they point to on the stack.
                     let from_state = tos.0.state;
-                    let from_index = tos.0.index;
-                    for edge in self.parser.cst[from_index].iter() {
+                    let from_position = tos.0.position;
+                    for edge in self.parser.cst[from_position].iter() {
                         if edge.from_state == from_state {
                             let node = CstPathNode {
-                                index: edge.to_index,
+                                position: edge.to_position,
                                 state: edge.to_state,
                             };
                             self.stack.push((node, false));
@@ -718,7 +735,7 @@ mod tests {
     {
         // Print the parse tree for dot
         println!("\n{}:\tdigraph {{", prefix);
-        // Print the nodes, using their index as an id
+        // Print the nodes, using their position as an id
         for (chart_index, state_list) in parser.chart.iter().enumerate() {
             for (state_index, state) in state_list.iter().enumerate() {
                 println!(
@@ -733,11 +750,11 @@ mod tests {
             }
         }
         // Print the edges
-        for (from_index, es) in parser.cst.iter().enumerate() {
+        for (from_position, es) in parser.cst.iter().enumerate() {
             for e in es.iter() {
                 println!(
                     "{}:\tc_{}_{}  -> c_{}_{}",
-                    prefix, from_index, e.from_state, e.to_index, e.to_state
+                    prefix, from_position, e.from_state, e.to_position, e.to_state
                 );
             }
         }
@@ -751,9 +768,9 @@ mod tests {
                         println!(
                             "{}:\tc_{}_{}  -> c_{}_{} [label=\"{}\",color=red]",
                             prefix,
-                            last_cst_node.index,
+                            last_cst_node.position,
                             last_cst_node.state,
-                            cst_node.current.index,
+                            cst_node.current.position,
                             cst_node.current.state,
                             i,
                         );
@@ -836,24 +853,22 @@ mod tests {
         let compiled_grammar = grammar.compile().expect("compilation should have worked");
 
         let mut parser = Parser::<Token, Token>::new(compiled_grammar);
-        let mut index = 0;
+        let mut position = 0;
         for (i, c) in [Token::John, Token::Called, Token::Mary, Token::From]
             .iter()
             .enumerate()
         {
             let res = parser.update(i, c.clone());
-            assert!(res.is_ok());
-            assert!(res.unwrap() != Verdict::Reject);
-            index = i;
+            assert!(res != Verdict::Reject);
+            position = i;
         }
-        let res = parser.update(index + 1, Token::Denver);
+        let res = parser.update(position + 1, Token::Denver);
         parser.print_chart();
-        assert!(res.is_ok());
-        assert_eq!(res.unwrap(), Verdict::Accept);
+        assert_eq!(res, Verdict::Accept);
 
         print_cst_as_dot(&parser, "john", false);
 
-        let mut cst_iter = parser.cst_iter();
+        let cst_iter = parser.cst_iter();
         for i in cst_iter {
             match i {
                 CstIterItem::Parsed(i) => {
@@ -867,7 +882,7 @@ mod tests {
                         i.end
                     );
                     for n in i.path.0.iter() {
-                        let dr = &parser.chart[n.index][n.state as usize].0;
+                        let dr = &parser.chart[n.position][n.state as usize].0;
                         println!(
                             "iter:   {}",
                             parser.grammar.dotted_rule_to_string(&dr).unwrap()
@@ -910,16 +925,14 @@ mod tests {
         let compiled_grammar = grammar.compile().expect("compilation should have worked");
 
         let mut parser = Parser::<char, CharMatcher>::new(compiled_grammar);
-        let mut index = 0;
+        let mut position = 0;
         for (i, c) in "john ".chars().enumerate() {
             let res = parser.update(i, c);
-            assert!(res.is_ok());
-            assert_eq!(res.unwrap(), Verdict::More);
-            index = i;
+            assert_eq!(res, Verdict::More);
+            position = i;
         }
-        let res = parser.update(index + 1, 'w');
-        assert!(res.is_ok());
-        assert_eq!(res.unwrap(), Verdict::Reject);
+        let res = parser.update(position + 1, 'w');
+        assert_eq!(res, Verdict::Reject);
 
         // Construct the node parse tree iterator
         let mut cst_iter = parser.cst_iter();
@@ -953,25 +966,22 @@ mod tests {
         // Start as "john called denver"
         for (i, c) in "john called denver".chars().enumerate() {
             let res = parser.update(i, c);
-            assert!(res.is_ok());
-            assert!(res.unwrap() != Verdict::Reject);
+            assert!(res != Verdict::Reject);
         }
 
         // Reset to the beginning of "denver"
         parser.buffer_changed(12);
 
         // Complete the sentence
-        let mut index = 0;
+        let mut position = 0;
         for (i, c) in "mary from denver".chars().enumerate() {
-            index = i + 12;
-            let res = parser.update(index, c);
-            assert!(res.is_ok());
-            assert!(res.unwrap() != Verdict::Reject);
+            position = i + 12;
+            let res = parser.update(position, c);
+            assert!(res != Verdict::Reject);
         }
 
-        let res = parser.update(index + 1, ' ');
-        assert!(res.is_ok());
-        assert_eq!(res.unwrap(), Verdict::Accept);
+        let res = parser.update(position + 1, ' ');
+        assert_eq!(res, Verdict::Accept);
     }
 
     /// Test a grammar with empty rules
@@ -1003,49 +1013,41 @@ mod tests {
         // "abc" should be acceptable
         {
             let res = parser.update(0, 'a');
-            assert!(res.is_ok());
-            assert_eq!(res.unwrap(), Verdict::More);
+            assert_eq!(res, Verdict::More);
         }
         {
             let res = parser.update(1, 'b');
-            assert!(res.is_ok());
-            assert_eq!(res.unwrap(), Verdict::More);
+            assert_eq!(res, Verdict::More);
         }
         {
             let res = parser.update(2, 'c');
-            assert!(res.is_ok());
-            assert_eq!(res.unwrap(), Verdict::Accept);
+            assert_eq!(res, Verdict::Accept);
         }
 
         // "ac" should be acceptable
         parser.buffer_changed(0);
         {
             let res = parser.update(0, 'a');
-            assert!(res.is_ok());
-            assert_eq!(res.unwrap(), Verdict::More);
+            assert_eq!(res, Verdict::More);
         }
         {
             let res = parser.update(1, 'c');
             parser.print_chart();
-            assert!(res.is_ok());
-            assert_eq!(res.unwrap(), Verdict::Accept);
+            assert_eq!(res, Verdict::Accept);
         }
         // "abb" should fail
         parser.buffer_changed(0);
         {
             let res = parser.update(0, 'a');
-            assert!(res.is_ok());
-            assert_eq!(res.unwrap(), Verdict::More);
+            assert_eq!(res, Verdict::More);
         }
         {
             let res = parser.update(1, 'b');
-            assert!(res.is_ok());
-            assert_eq!(res.unwrap(), Verdict::More);
+            assert_eq!(res, Verdict::More);
         }
         {
             let res = parser.update(2, 'b');
-            assert!(res.is_ok());
-            assert_eq!(res.unwrap(), Verdict::Reject);
+            assert_eq!(res, Verdict::Reject);
         }
     }
 
@@ -1088,8 +1090,7 @@ mod tests {
         // "aab" should be accepted
         for (i, (c, v)) in [('a', More), ('a', More), ('b', Accept)].iter().enumerate() {
             let res = parser.update(i, *c);
-            assert!(res.is_ok());
-            assert_eq!(res.unwrap(), *v);
+            assert_eq!(res, *v);
         }
 
         // "adab" should fail and recover
@@ -1105,8 +1106,7 @@ mod tests {
         {
             let res = parser.update(i, *c);
             eprintln!("c={:?}, res={:?}", *c, res);
-            assert!(res.is_ok());
-            assert_eq!(res.unwrap(), *v);
+            assert_eq!(res, *v);
         }
 
         parser.print_chart();
@@ -1202,8 +1202,7 @@ mod tests {
         .enumerate()
         {
             let res = parser.update(i, *c);
-            assert!(res.is_ok());
-            assert_eq!(res.unwrap(), *v);
+            assert_eq!(res, *v);
         }
 
         parser.print_chart();
@@ -1261,8 +1260,7 @@ mod tests {
         {
             let res = parser.update(i, *c);
             eprintln!("c={:?}, res={:?}", *c, res);
-            assert!(res.is_ok());
-            assert_eq!(res.unwrap(), *v);
+            assert_eq!(res, *v);
         }
 
         // Print chart and graph
