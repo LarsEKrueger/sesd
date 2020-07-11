@@ -498,7 +498,7 @@ impl App {
         let cursor_index = self.editor.cursor();
 
         // Traverse the parse tree. If there are items that have no style in the style sheet, draw
-        // them and mark until which index, the input has been drawn already. Skip all entries that
+        // them and mark until which index the input has been drawn already. Skip all entries that
         // begin before the current end. This prevents multiple occurrances of the same text.
         let mut line_nr = 0;
         let mut line_len = 0;
@@ -597,8 +597,27 @@ impl App {
                         }
                     }
                 }
-                CstIterItem::Unparsed(unparsed) => {
-                    // TODO: Render the unparsed part with defualt syle
+                CstIterItem::Unparsed(_unparsed) => {
+                    if line_nr == self.document.len() {
+                        self.document.push(Vec::new());
+                    }
+                    // Render the unparsed part with defualt syle
+                    if let Some((row, col)) = Self::render_node(
+                        &self.editor,
+                        &mut self.document,
+                        &mut line_nr,
+                        &mut line_len,
+                        width,
+                        rendered_until,
+                        self.editor.len(),
+                        cursor_index,
+                        self.style_sheet.default,
+                    ) {
+                        trace!("Cursor to ({},{})", row, col);
+                        self.cursor_doc_line = row;
+                        self.cursor_col = col;
+                    }
+                    rendered_until = self.editor.len();
                 }
             }
         }
