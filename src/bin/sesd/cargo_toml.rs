@@ -27,7 +27,7 @@
 //! This is based on https://github.com/toml-lang/toml/blob/master/toml.abnf, which is
 //! MIT licensed.
 
-use sesd::{char::CharMatcher, CompiledGrammar, Grammar, Symbol, ERROR_ID};
+use sesd::{char::CharMatcher, CompiledGrammar, Grammar, Rule, Symbol, ERROR_ID};
 
 use super::style_sheet::{Style, StyleSheet, SymbolMatcher};
 
@@ -1236,14 +1236,8 @@ fn grammar_nostart() -> Grammar<char, CharMatcher> {
             NonTerminal("val".to_string()),
         ],
     );
-    grammar.add_rule(
-        "key".to_string(),
-        vec![NonTerminal("simple-key".to_string())],
-    );
-    grammar.add_rule(
-        "key".to_string(),
-        vec![NonTerminal("dotted-key".to_string())],
-    );
+    grammar.add(Rule::new("key").nt("simple-key"));
+    grammar.add(Rule::new("key").nt("dotted-key"));
     grammar.add_rule(
         "simple-key".to_string(),
         vec![NonTerminal("quoted-key".to_string())],
@@ -1287,36 +1281,19 @@ fn grammar_nostart() -> Grammar<char, CharMatcher> {
         "quoted-key".to_string(),
         vec![NonTerminal("literal-string".to_string())],
     );
-    grammar.add_rule(
-        "dotted-key".to_string(),
-        vec![
-            NonTerminal("simple-key".to_string()),
-            NonTerminal("dotted-key-rest".to_string()),
-        ],
+    grammar.add(
+        Rule::new("dotted-key")
+            .nt("simple-key")
+            .nt("dotted-key-rest"),
     );
-    grammar.add_rule(
-        "dotted-key-rest".to_string(),
-        vec![
-            NonTerminal("dot-sep".to_string()),
-            NonTerminal("simple-key".to_string()),
-            NonTerminal("dotted-key-rest".to_string()),
-        ],
+    grammar.add(
+        Rule::new("dotted-key-rest")
+            .nt("dot-sep")
+            .nt("simple-key")
+            .nt("dotted-key-rest"),
     );
-    grammar.add_rule(
-        "dotted-key-rest".to_string(),
-        vec![
-            NonTerminal("dot-sep".to_string()),
-            NonTerminal("simple-key".to_string()),
-        ],
-    );
-    grammar.add_rule(
-        "dot-sep".to_string(),
-        vec![
-            NonTerminal("ws".to_string()),
-            Terminal(Exact('.')),
-            NonTerminal("ws".to_string()),
-        ],
-    );
+    grammar.add(Rule::new("dotted-key-rest").nt("dot-sep").nt("simple-key"));
+    grammar.add(Rule::new("dot-sep").nt("ws").t(Exact('.')).nt("ws"));
     grammar.add_rule(
         "keyval-sep".to_string(),
         vec![
@@ -1345,14 +1322,26 @@ fn grammar_nostart() -> Grammar<char, CharMatcher> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use sesd::{Parser, Verdict};
 
     #[test]
-    fn comment() {
+    fn table() {
         let mut grammar = grammar_nostart();
 
-        grammar.set_start("comment".to_string());
-        let grammar = grammar.compile();
-        assert!(grammar.is_ok());
+        grammar.set_start("table".to_string());
+
+        let compiled_grammar = grammar.compile().expect("compilation should have worked");
+
+        let mut parser = Parser::<char, CharMatcher>::new(compiled_grammar);
+        let mut position = 0;
+        for (i, c) in "[key.rest".chars().enumerate() {
+            let res = parser.update(i, c);
+            assert_eq!(res, Verdict::More);
+            position = i;
+        }
+        let res = parser.update(position + 1, ']');
+        parser.print_chart();
+        assert_eq!(res, Verdict::Accept);
     }
 
 }

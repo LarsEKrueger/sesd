@@ -129,7 +129,8 @@ pub struct CompiledGrammar<T, M>
 where
     M: Matcher<T>,
 {
-    /// Names of symbols. Index corresponds to value in rhs of rules.
+    /// Names of symbols. Index corresponds to value in rhs of rules. Rules that have empty right
+    /// hand sides come first.
     nonterminal_table: Vec<String>,
 
     /// Values of expected terminals. Index is value from rhs of rule - nonterminal_table.len().
@@ -143,6 +144,9 @@ where
 
     /// Index of start symbol
     start: SymbolId,
+
+    /// Number of symbols that have empty right hand sides.
+    empty_rules: SymbolId,
 
     /// Marker to indicate the T is used indirectly by Matcher
     _marker: std::marker::PhantomData<T>,
@@ -238,30 +242,32 @@ where
         symbol_set.insert(String::new(), (true, ERROR_ID as usize));
         let mut next_symbol_id = (ERROR_ID as usize) + 1;
 
-        // Don't forget the start symbol. It counts as used on the RHS
-        if self.start.is_empty() {
-            return Err(Error::EmptyStart);
-        }
-
-        update_symbol(
-            &mut symbol_set,
-            self.start.clone(),
-            false,
-            &mut next_symbol_id,
-        );
-
         let mut terminal_set = HashSet::new();
 
+        // Find empty rules first to give their lhs symbols low numbers
         for r in self.rules.iter() {
             let lhs = &r.lhs;
             if lhs.is_empty() {
                 return Err(Error::EmptySymbol);
             }
-            update_symbol(&mut symbol_set, lhs.clone(), true, &mut next_symbol_id);
             // The index into the rhs can grow to the full length (i.e. past the last entry).
             if r.rhs.len() >= (MAX_SYMBOL_ID as usize) {
                 return Err(Error::TooLarge(lhs.clone()));
             }
+
+            if r.rhs.len() == 0 {
+                update_symbol(&mut symbol_set, lhs.clone(), true, &mut next_symbol_id);
+            }
+        }
+
+        let empty_rules = next_symbol_id;
+        if empty_rules > (MAX_SYMBOL_ID as usize) {
+            return Err(Error::TooLarge("Empty Rules".to_string()));
+        }
+
+        for r in self.rules.iter() {
+            let lhs = &r.lhs;
+            update_symbol(&mut symbol_set, lhs.clone(), true, &mut next_symbol_id);
             // TODO?: Reject if left recursive rule
             for s in r.rhs.iter() {
                 match s {
@@ -277,6 +283,18 @@ where
                 }
             }
         }
+
+        // Don't forget the start symbol. It counts as used on the RHS
+        if self.start.is_empty() {
+            return Err(Error::EmptyStart);
+        }
+
+        update_symbol(
+            &mut symbol_set,
+            self.start.clone(),
+            false,
+            &mut next_symbol_id,
+        );
 
         // Check if all symbols have rules
         for (sym, (has_rule, _)) in symbol_set.iter() {
@@ -353,6 +371,7 @@ where
             terminal_table,
             rules,
             start,
+            empty_rules: empty_rules as SymbolId,
             _marker: PhantomData,
         })
     }
@@ -496,6 +515,11 @@ where
     /// Get the lhs of rule with index `i`
     pub fn lhs(&self, i: usize) -> SymbolId {
         self.rules[i as usize].0
+    }
+
+    /// Check if the non-terminal symbol has empty rules
+    pub fn nt_with_empty_rule(&self, sym: SymbolId) -> bool {
+        sym < self.empty_rules
     }
 }
 

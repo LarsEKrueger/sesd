@@ -246,7 +246,13 @@ where
         let mut i = 0;
         while i < start_set.len() {
             match grammar.dotted_symbol(&start_set[i].0) {
-                CompiledSymbol::NonTerminal(nt) => predict(&mut start_set, nt, 0, &grammar),
+                CompiledSymbol::NonTerminal(nt) => {
+                    predict(&mut start_set, nt, 0, &grammar);
+                    if grammar.nt_with_empty_rule(nt) {
+                        let new_entry = (start_set[i].0.advance_dot(), start_set[i].1);
+                        add_to_state_list(&mut start_set, new_entry);
+                    }
+                }
                 CompiledSymbol::Terminal(_) => {
                     // Can't do anything as we don't know the first token.
                 }
@@ -455,12 +461,21 @@ where
         let mut i = 0;
         while i < self.chart[new_position].len() {
             match self.grammar.dotted_symbol(&self.chart[new_position][i].0) {
-                CompiledSymbol::NonTerminal(nt) => predict(
-                    &mut self.chart[new_position],
-                    nt,
-                    new_position,
-                    &self.grammar,
-                ),
+                CompiledSymbol::NonTerminal(nt) => {
+                    predict(
+                        &mut self.chart[new_position],
+                        nt,
+                        new_position,
+                        &self.grammar,
+                    );
+                    if self.grammar.nt_with_empty_rule(nt) {
+                        let new_entry = (
+                            self.chart[new_position][i].0.advance_dot(),
+                            self.chart[new_position][i].1,
+                        );
+                        add_to_state_list(&mut self.chart[new_position], new_entry);
+                    }
+                }
                 CompiledSymbol::Terminal(_) => {
                     // Can't do anything as we don't know the new token.
                 }
