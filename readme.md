@@ -127,6 +127,7 @@ features that implement them.
     * One, compiled-in language
 * [ ] 0.2 - General syntax directed editor
     * Dynamically loaded grammars and templates
+    * Compile library to webassembly, provide interactive grammar debugger
 
 # TODO
 
