@@ -430,6 +430,26 @@ impl<M> Rule<M> {
         self.rhs.push(Symbol::Terminal(t));
         self
     }
+
+    /// Append a sequence of terminals to the rule.
+    ///
+    /// ```ignore
+    /// Rule::new("left").ts("abc".chars())
+    /// ```
+    ///
+    /// corresponds to
+    ///
+    /// ```ignore
+    /// <left> ::= 'a' 'b' 'c'
+    /// ```
+    ///
+    /// in [BNF](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form).
+    pub fn ts(mut self, iter: impl Iterator<Item=M>) -> Self {
+        for t in iter {
+            self.rhs.push(Symbol::Terminal(t));
+        }
+        self
+    }
 }
 
 impl<T, M> CompiledGrammar<T, M>
