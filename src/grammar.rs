@@ -444,7 +444,7 @@ impl<M> Rule<M> {
     /// ```
     ///
     /// in [BNF](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form).
-    pub fn ts(mut self, iter: impl Iterator<Item=M>) -> Self {
+    pub fn ts(mut self, iter: impl Iterator<Item = M>) -> Self {
         for t in iter {
             self.rhs.push(Symbol::Terminal(t));
         }

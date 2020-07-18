@@ -36,6 +36,9 @@ pub enum CharMatcher {
 
     /// Match a range [from, to], i.e. both limits of the interval match.
     Range(char, char),
+
+    /// Match all but the characters in the string
+    NoneOf(Vec<char>),
 }
 
 impl Matcher<char> for CharMatcher {
@@ -43,6 +46,14 @@ impl Matcher<char> for CharMatcher {
         match self {
             CharMatcher::Exact(c) => t == *c,
             CharMatcher::Range(from, to) => (*from <= t) && (t <= *to),
+            CharMatcher::NoneOf(cs) => {
+                for c in cs {
+                    if *c == t {
+                        return false;
+                    }
+                }
+                true
+            }
         }
     }
 }
