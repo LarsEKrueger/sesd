@@ -83,6 +83,7 @@ mod buffer;
 pub mod char;
 mod grammar;
 mod parser;
+pub mod style_sheet;
 
 use buffer::Buffer;
 pub use grammar::{

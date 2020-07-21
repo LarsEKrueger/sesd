@@ -29,7 +29,7 @@
 
 use sesd::{char::CharMatcher, CompiledGrammar, Grammar, Rule, Symbol, ERROR_ID};
 
-use super::style_sheet::{Style, StyleSheet, SymbolMatcher};
+use super::look_and_feel::{LookAndFeel, Style, StyleMatcher};
 
 /// Build the grammar for TOML files
 pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
@@ -74,87 +74,74 @@ impl SB {
 }
 
 /// Build the style sheet for Cargo.toml files
-pub fn style_sheet(grammar: &CompiledGrammar<char, CharMatcher>) -> StyleSheet {
-    let mut sheet = StyleSheet::new(Style::none());
+pub fn look_and_feel(grammar: &CompiledGrammar<char, CharMatcher>) -> LookAndFeel {
+    let mut sheet = LookAndFeel::new(Style::none());
 
     // Table headers, underlined
-    sheet.add(
-        vec![
-            SymbolMatcher::Exact(grammar.nt_id("toml")),
-            SymbolMatcher::Star(grammar.nt_id("expressions")),
-            SymbolMatcher::Exact(grammar.nt_id("expression")),
-            SymbolMatcher::Exact(grammar.nt_id("table")),
-        ],
-        SB::new().u().s,
+    sheet.add_style(
+        StyleMatcher::new(SB::new().u().s)
+            .exact(grammar.nt_id("toml"))
+            .star(grammar.nt_id("expressions"))
+            .exact(grammar.nt_id("expression"))
+            .exact(grammar.nt_id("table")),
     );
 
     // Comments, italic
-    sheet.add(
-        vec![
-            SymbolMatcher::Exact(grammar.nt_id("toml")),
-            SymbolMatcher::Star(grammar.nt_id("expressions")),
-            SymbolMatcher::Exact(grammar.nt_id("expression")),
-            SymbolMatcher::Exact(grammar.nt_id("maybe_comment")),
-            SymbolMatcher::Exact(grammar.nt_id("comment")),
-        ],
-        SB::new().i().s,
+    sheet.add_style(
+        StyleMatcher::new(SB::new().i().s)
+            .exact(grammar.nt_id("toml"))
+            .star(grammar.nt_id("expressions"))
+            .exact(grammar.nt_id("expression"))
+            .exact(grammar.nt_id("maybe_comment"))
+            .exact(grammar.nt_id("comment")),
     );
 
     // Keys, cyan on black
-    sheet.add(
-        vec![
-            SymbolMatcher::Exact(grammar.nt_id("toml")),
-            SymbolMatcher::Star(grammar.nt_id("expressions")),
-            SymbolMatcher::Exact(grammar.nt_id("expression")),
-            SymbolMatcher::Exact(grammar.nt_id("keyval")),
-            SymbolMatcher::Exact(grammar.nt_id("key")),
-        ],
-        SB::new().cp(pancurses::ColorPair(0o60)).s,
+    sheet.add_style(
+        StyleMatcher::new(SB::new().cp(pancurses::ColorPair(0o60)).s)
+            .exact(grammar.nt_id("toml"))
+            .star(grammar.nt_id("expressions"))
+            .exact(grammar.nt_id("expression"))
+            .exact(grammar.nt_id("keyval"))
+            .exact(grammar.nt_id("key")),
     );
 
     // String values, magenta on black
-    sheet.add(
-        vec![
-            SymbolMatcher::Exact(grammar.nt_id("toml")),
-            SymbolMatcher::Star(grammar.nt_id("expressions")),
-            SymbolMatcher::Exact(grammar.nt_id("expression")),
-            SymbolMatcher::Exact(grammar.nt_id("keyval")),
-            SymbolMatcher::Exact(grammar.nt_id("val")),
-            SymbolMatcher::Exact(grammar.nt_id("string")),
-        ],
-        SB::new().cp(pancurses::ColorPair(0o50)).s,
+    sheet.add_style(
+        StyleMatcher::new(SB::new().cp(pancurses::ColorPair(0o50)).s)
+            .exact(grammar.nt_id("toml"))
+            .star(grammar.nt_id("expressions"))
+            .exact(grammar.nt_id("expression"))
+            .exact(grammar.nt_id("keyval"))
+            .exact(grammar.nt_id("val"))
+            .exact(grammar.nt_id("string")),
     );
 
     // Array values, magenta on black, underline
-    sheet.add(
-        vec![
-            SymbolMatcher::Exact(grammar.nt_id("toml")),
-            SymbolMatcher::Star(grammar.nt_id("expressions")),
-            SymbolMatcher::Exact(grammar.nt_id("expression")),
-            SymbolMatcher::Exact(grammar.nt_id("keyval")),
-            SymbolMatcher::Exact(grammar.nt_id("val")),
-            SymbolMatcher::Exact(grammar.nt_id("array")),
-        ],
-        SB::new().cp(pancurses::ColorPair(0o50)).u().s,
+    sheet.add_style(
+        StyleMatcher::new(SB::new().cp(pancurses::ColorPair(0o50)).u().s)
+            .exact(grammar.nt_id("toml"))
+            .star(grammar.nt_id("expressions"))
+            .exact(grammar.nt_id("expression"))
+            .exact(grammar.nt_id("keyval"))
+            .exact(grammar.nt_id("val"))
+            .exact(grammar.nt_id("array")),
     );
 
     // Struct values, magenta on black, italic
-    sheet.add(
-        vec![
-            SymbolMatcher::Exact(grammar.nt_id("toml")),
-            SymbolMatcher::Star(grammar.nt_id("expressions")),
-            SymbolMatcher::Exact(grammar.nt_id("expression")),
-            SymbolMatcher::Exact(grammar.nt_id("keyval")),
-            SymbolMatcher::Exact(grammar.nt_id("val")),
-            SymbolMatcher::Exact(grammar.nt_id("inline-table")),
-        ],
-        SB::new().cp(pancurses::ColorPair(0o50)).i().s,
+    sheet.add_style(
+        StyleMatcher::new(SB::new().cp(pancurses::ColorPair(0o50)).i().s)
+            .exact(grammar.nt_id("toml"))
+            .star(grammar.nt_id("expressions"))
+            .exact(grammar.nt_id("expression"))
+            .exact(grammar.nt_id("keyval"))
+            .exact(grammar.nt_id("val"))
+            .exact(grammar.nt_id("inline-table")),
     );
 
     // Any error, white on red
-    sheet.add(
-        vec![SymbolMatcher::SkipTo(ERROR_ID)],
-        SB::new().cp(pancurses::ColorPair(0o71)).i().s,
+    sheet.add_style(
+        StyleMatcher::new(SB::new().cp(pancurses::ColorPair(0o71)).i().s).skip_to(ERROR_ID),
     );
 
     // Predictions

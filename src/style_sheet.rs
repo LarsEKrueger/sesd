@@ -22,34 +22,17 @@
     SOFTWARE.
 */
 
-//! Style sheet
+//! Style sheet with arbitrary styles
 
-use std::collections::HashMap;
+use super::SymbolId;
 
-use pancurses::Attributes;
-
-use sesd::SymbolId;
-
-#[derive(Clone, Copy, Debug)]
-pub struct Style {
-    pub attr: Attributes,
-    pub line_break_before: bool,
-    pub line_break_after: bool,
-}
-
-pub struct StyleSheet {
-    pub default: Style,
-
+pub struct StyleSheet<Style> {
     /// All style matchers
-    styles: Vec<StyleMatcher>,
-
-    /// List of predictions for a given symbol
-    predictions: HashMap<SymbolId, Vec<String>>,
+    styles: Vec<StyleMatcher<Style>>,
 }
 
 /// Simple matcher for parse tree paths
-#[derive(Debug)]
-pub enum SymbolMatcher {
+enum SymbolMatcher {
     /// Match exactly one symbol
     Exact(SymbolId),
 
@@ -61,51 +44,35 @@ pub enum SymbolMatcher {
 }
 
 /// A simple matcher of non-terminals, to return a style.
-#[derive(Debug)]
-struct StyleMatcher {
+pub struct StyleMatcher<Style> {
     pattern: Vec<SymbolMatcher>,
     style: Style,
 }
 
 /// Result of lookup operation
 #[derive(Debug)]
-pub enum LookedUp {
+pub enum LookedUp<'a, Style> {
     /// Found a style for a parent path
     Parent,
 
     /// Found the style for this node
-    Found(Style),
+    Found(&'a Style),
 
     /// Found nothing
     Nothing,
 }
 
-impl Style {
-    pub fn none() -> Self {
-        Self {
-            attr: Attributes::new(),
-            line_break_before: false,
-            line_break_after: false,
-        }
-    }
-}
-
-impl StyleSheet {
-    pub fn new(default: Style) -> Self {
-        Self {
-            default,
-            styles: Vec::new(),
-            predictions: HashMap::new(),
-        }
+impl<Style> StyleSheet<Style> {
+    pub fn new() -> Self {
+        Self { styles: Vec::new() }
     }
 
-    pub fn add(&mut self, pattern: Vec<SymbolMatcher>, style: Style) {
-        // Convert the path to a byte array
-        self.styles.push(StyleMatcher { pattern, style });
+    pub fn add(&mut self, m: StyleMatcher<Style>) {
+        self.styles.push(m);
     }
 
     /// Lookup a path in the style sheet.
-    pub fn lookup(&self, path: &[SymbolId]) -> LookedUp {
+    pub fn lookup(&self, path: &[SymbolId]) -> LookedUp<Style> {
         // Keep track of the still-possible matchers and respective position in the match list.
         let mut active: Vec<(usize, usize)> = (0..self.styles.len()).map(|i| (i, 0)).collect();
 
@@ -120,13 +87,10 @@ impl StyleSheet {
         // If there are no matchers left, return Nothing.
         //
         // In case of multiple matches, use the longest one.
-        trace!("lookup: {:?}", path);
         let mut res = LookedUp::Nothing;
         for s in path.iter() {
-            trace!("  {:?}", s);
             let mut i = 0;
             while i < active.len() {
-                trace!("  {}, {:?}, {:?}", i, active[i], self.styles[active[i].0]);
                 if active[i].1 >= self.styles[active[i].0].pattern.len() {
                     res = LookedUp::Parent;
                     active.remove(i);
@@ -166,26 +130,34 @@ impl StyleSheet {
         debug_assert!(!active.is_empty());
         for a in active {
             if a.1 == self.styles[a.0].pattern.len() {
-                return LookedUp::Found(self.styles[a.0].style);
+                return LookedUp::Found(&self.styles[a.0].style);
             }
         }
 
         res
     }
+}
 
-    /// Add a prediction to the style sheet
-    pub fn add_prediction(&mut self, sym: SymbolId, pred: &[&str]) {
-        let preds = pred.iter().map(|s| s.to_string()).collect();
-        self.predictions.insert(sym, preds);
+impl<Style> StyleMatcher<Style> {
+    pub fn new(style: Style) -> Self {
+        Self {
+            pattern: Vec::new(),
+            style,
+        }
     }
 
-    /// Find the predictions for this symbol
-    pub fn predictions(&self, sym: SymbolId) -> Vec<String> {
-        self.predictions
-            .get(&sym)
-            .iter()
-            .flat_map(|p| p.iter())
-            .map(|s| s.clone())
-            .collect()
+    pub fn exact(mut self, sym: SymbolId) -> Self {
+        self.pattern.push(SymbolMatcher::Exact(sym));
+        self
+    }
+
+    pub fn star(mut self, sym: SymbolId) -> Self {
+        self.pattern.push(SymbolMatcher::Star(sym));
+        self
+    }
+
+    pub fn skip_to(mut self, sym: SymbolId) -> Self {
+        self.pattern.push(SymbolMatcher::SkipTo(sym));
+        self
     }
 }

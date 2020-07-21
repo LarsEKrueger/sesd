@@ -39,8 +39,8 @@ use structopt::StructOpt;
 use sesd::{char::CharMatcher, CstIterItem, SymbolId, SynchronousEditor};
 
 mod cargo_toml;
-mod style_sheet;
-use style_sheet::{LookedUp, Style};
+mod look_and_feel;
+use look_and_feel::{LookAndFeel, LookedUp, Style};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "sesd", about = "Syntax directed text editor")]
@@ -65,8 +65,8 @@ struct App {
     /// Editor in memory
     editor: Editor,
 
-    /// Style sheet
-    style_sheet: style_sheet::StyleSheet,
+    /// Language-specific look and feel
+    look_and_feel: LookAndFeel,
 
     /// Cache for rendering syntax items
     ///
@@ -323,7 +323,7 @@ impl App {
         start: usize,
         end: usize,
         cursor_index: usize,
-        style: Style,
+        style: &Style,
     ) -> Option<(usize, usize)> {
         let mut res = None;
 
@@ -550,7 +550,7 @@ impl App {
                             }
                         }
 
-                        let looked_up = self.style_sheet.lookup(&path);
+                        let looked_up = self.look_and_feel.lookup(&path);
                         trace!("{:?}", looked_up);
                         match looked_up {
                             LookedUp::Parent => {
@@ -586,7 +586,7 @@ impl App {
                                     rendered_until,
                                     cst_node.end,
                                     cursor_index,
-                                    self.style_sheet.default,
+                                    &self.look_and_feel.default,
                                 ) {
                                     trace!("Cursor to ({},{})", row, col);
                                     self.cursor_doc_line = row;
@@ -611,7 +611,7 @@ impl App {
                         rendered_until,
                         self.editor.len(),
                         cursor_index,
-                        self.style_sheet.default,
+                        &self.look_and_feel.default,
                     ) {
                         trace!("Cursor to ({},{})", row, col);
                         self.cursor_doc_line = row;
@@ -632,7 +632,7 @@ impl App {
         // Get possible prediction strings from style sheet
         let predictions = symbols
             .iter()
-            .flat_map(|sym| self.style_sheet.predictions(*sym))
+            .flat_map(|sym| self.look_and_feel.predictions(*sym))
             .collect();
 
         let res = self.predictions != predictions;
@@ -745,7 +745,7 @@ fn main() {
     let cmd_line = CommandLine::from_args();
     debug!("{:?}", cmd_line);
     let grammar = cargo_toml::grammar();
-    let style_sheet = cargo_toml::style_sheet(&grammar);
+    let look_and_feel = cargo_toml::look_and_feel(&grammar);
 
     // Set the locale so that UTF-8 codepoints appear correctly
     unsafe { libc::setlocale(libc::LC_ALL, NUL_BYTE_ARRAY[..].as_ptr()) };
@@ -757,7 +757,7 @@ fn main() {
         editor: Editor::new(grammar),
         error: String::new(),
         document: Vec::new(),
-        style_sheet,
+        look_and_feel,
         cursor_doc_line: 0,
         cursor_win_line: 0,
         cursor_col: 0,
