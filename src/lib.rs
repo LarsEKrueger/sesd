@@ -79,6 +79,9 @@
 //! assert_eq!(res, Verdict::Accept);
 //! ```
 
+#[macro_use]
+extern crate log;
+
 mod buffer;
 pub mod char;
 mod grammar;

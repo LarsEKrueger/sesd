@@ -715,6 +715,19 @@ where
             }
         }
     }
+
+    pub fn trace_chart(&self) {
+        for i in 0..=self.valid_entries {
+            trace!("chart[{}]:", i);
+            for e in self.chart[i].iter() {
+                trace!(
+                    "  {}, [{}]",
+                    self.grammar.dotted_rule_to_string(&e.0).unwrap(),
+                    e.1
+                );
+            }
+        }
+    }
 }
 
 impl CstIterItemNode {
