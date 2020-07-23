@@ -156,6 +156,8 @@ where
     ///
     /// Parse errors are silently ignored and inserted into the CST.
     fn reparse(&mut self, start: usize) {
+        // Mark the buffer as changed at start, even if the rest has been deleted
+        self.parser.buffer_changed(start);
         for (i, t) in self.buffer.token_from_iter(start) {
             self.parser.update(i, t.clone());
         }
