@@ -729,7 +729,7 @@ where
     pub fn trace_chart(&self) {
         for i in 0..=self.valid_entries {
             trace!("chart[{}]:", i);
-            for (j,e) in self.chart[i].iter().enumerate() {
+            for (j, e) in self.chart[i].iter().enumerate() {
                 trace!(
                     "  {:6}: {}, [{}]",
                     j,
