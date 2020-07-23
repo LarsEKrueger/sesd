@@ -541,6 +541,7 @@ where
     pub fn nt_with_empty_rule(&self, sym: SymbolId) -> bool {
         sym < self.empty_rules
     }
+
 }
 
 impl<T, M> CompiledGrammar<T, M>
@@ -594,6 +595,17 @@ where
     /// terminals.
     pub fn print_dotted_rule(&self, dotted_rule: &DottedRule) -> std::io::Result<()> {
         self.write_dotted_rule(&mut std::io::stdout(), dotted_rule)
+    }
+
+    /// Log the tables as debug
+    pub fn debug_tables(&self) {
+        debug!("Non terminal table");
+        for (i,n) in self.nonterminal_table.iter().enumerate() {
+            debug!("  {:6}: {}", i, n);
+        }
+        for (i,n) in self.terminal_table.iter().enumerate() {
+            debug!("  {:6}: {:?}", i+self.nonterminal_table.len(), n);
+        }
     }
 }
 
