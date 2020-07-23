@@ -719,9 +719,10 @@ where
     pub fn trace_chart(&self) {
         for i in 0..=self.valid_entries {
             trace!("chart[{}]:", i);
-            for e in self.chart[i].iter() {
+            for (j,e) in self.chart[i].iter().enumerate() {
                 trace!(
-                    "  {}, [{}]",
+                    "  {:6}: {}, [{}]",
+                    j,
                     self.grammar.dotted_rule_to_string(&e.0).unwrap(),
                     e.1
                 );
