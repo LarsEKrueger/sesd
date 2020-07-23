@@ -473,7 +473,17 @@ where
                             self.chart[new_position][i].0.advance_dot(),
                             self.chart[new_position][i].1,
                         );
-                        add_to_state_list(&mut self.chart[new_position], new_entry);
+                        let new_state = add_to_state_list(&mut self.chart[new_position], new_entry);
+                        // Add a CST sibling link to the previous position as not to break the
+                        // tree.
+                        add_to_cst_list(
+                            &mut cst_sibling_list,
+                            CstEdge {
+                                from_state: new_state,
+                                to_state: i as SymbolId,
+                                to_position: new_position,
+                            },
+                        );
                     }
                 }
                 CompiledSymbol::Terminal(_) => {
