@@ -72,6 +72,9 @@ pub fn start_of_line(buffer: &Vec<char>, position: usize) -> bool {
 ///
 /// Predicate for skip_forward
 pub fn end_of_line(buffer: &Vec<char>, position: usize) -> bool {
-    debug_assert!(position < buffer.len());
-    buffer[position] == '\n'
+    if position == buffer.len() {
+        true
+    } else {
+        buffer[position] == '\n'
+    }
 }

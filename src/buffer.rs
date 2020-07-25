@@ -48,12 +48,15 @@ impl<T> Buffer<T> {
     ///
     /// Return None, if the index wasn't found. Otherwise, return the index at which the predicate
     /// became true.
+    ///
+    /// Be advised that the index runs past the last character index to allow the insert point at
+    /// the end of the buffer to be found.
     pub fn search_forward<F>(&self, start: usize, mut until: F) -> Option<usize>
     where
         F: FnMut(&Vec<T>, usize) -> bool,
     {
         let mut index = start;
-        while index < self.tokens.len() {
+        while index <= self.tokens.len() {
             if until(&self.tokens, index) {
                 return Some(index);
             }
