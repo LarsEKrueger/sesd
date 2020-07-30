@@ -236,9 +236,9 @@ mod tests {
 
         assert_eq!(buffer.search_forward(0, |b, x| b[x] == 4), Some(2));
         assert_eq!(buffer.search_forward(2, |b, x| b[x] == 4), Some(2));
-        assert_eq!(buffer.search_forward(3, |b, x| b[x] == 4), None);
-        assert_eq!(buffer.search_forward(4, |b, x| b[x] == 4), None);
-        assert_eq!(buffer.search_forward(0, |b, x| b[x] == 8), None);
+        assert_eq!(buffer.search_forward(3, |b, x| x < b.len() && b[x] == 4), None);
+        assert_eq!(buffer.search_forward(4, |b, x| x < b.len() && b[x] == 4), None);
+        assert_eq!(buffer.search_forward(0, |b, x| x < b.len() && b[x] == 8), None);
     }
 
     #[test]
