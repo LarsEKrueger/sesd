@@ -558,7 +558,7 @@ where
         verdict.unwrap()
     }
 
-    /// Return a pre-order CST iterator
+    /// Return a pre-order CST iterator, starting at the last position that accepted the input.
     pub fn cst_iter(&self) -> CstIter<T, M> {
         // Collect all the entries that complete a start symbol. Search backwards from the last
         // entry.
@@ -598,6 +598,37 @@ where
             unparsed,
             done: false,
         }
+    }
+
+    /// Return a pre-order CST iterator, starting at the current position regardless of acceptance.
+    ///
+    /// This will return all partial parses that are possible at the given position.
+    ///
+    /// Return None if the position was invalid.
+    pub fn partial_cst_iter(&self, position: usize) -> Option<CstIter<T, M>> {
+        if position >= self.valid_entries {
+            return None;
+        }
+
+        // Collect all the entries at the position
+        let mut stack = Vec::new();
+
+        for rule_index in 0..self.chart[position].len() {
+            stack.push((
+                CstPathNode {
+                    position,
+                    state: rule_index as SymbolId,
+                },
+                false,
+            ));
+        }
+
+        Some(CstIter {
+            parser: &self,
+            stack,
+            unparsed: position,
+            done: false,
+        })
     }
 
     /// Iterate through the predictions in the same order that the cst would generate them.
