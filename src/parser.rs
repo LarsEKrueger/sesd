@@ -600,14 +600,15 @@ where
         }
     }
 
-    /// Return a pre-order CST iterator, starting at the current position regardless of acceptance.
+    /// Return the full set of symbols that could be parsed from the given position, including the
+    /// potential parent nodes of the CST.
     ///
-    /// This will return all partial parses that are possible at the given position.
+    /// Return an empty vector if the position was invalid.
     ///
-    /// Return None if the position was invalid.
-    pub fn partial_cst_iter(&self, position: usize) -> Option<CstIter<T, M>> {
-        if position >= self.valid_entries {
-            return None;
+    /// Returned tuples consist of possible symbol and start position.
+    pub fn full_predictions(&self, position: usize) -> Vec<(SymbolId, usize)> {
+        if position > self.valid_entries {
+            return Vec::new();
         }
 
         // Collect all the entries at the position
@@ -623,12 +624,29 @@ where
             ));
         }
 
-        Some(CstIter {
+        CstIter {
             parser: &self,
             stack,
             unparsed: position,
             done: false,
+        }
+        .filter_map(|n| match n {
+            CstIterItem::Parsed(n) => {
+                if n.start != position
+                    && n.end == position
+                    && !self.grammar.dotted_is_completed(&n.dotted_rule)
+                {
+                    let lhs = self.grammar.lhs(n.dotted_rule.rule as usize);
+                    Some((lhs, n.start))
+                } else {
+                    None
+                }
+            }
+
+            CstIterItem::Unparsed(_unparsed) => None,
         })
+        .unique()
+        .collect()
     }
 
     /// Iterate through the predictions in the same order that the cst would generate them.

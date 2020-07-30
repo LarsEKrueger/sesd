@@ -480,9 +480,15 @@ where
     /// parse.
     pub fn dotted_is_completed_start(&self, dotted_rule: &DottedRule) -> bool {
         let rule_index = dotted_rule.rule as usize;
+        self.dotted_is_completed(dotted_rule) && self.is_start_rule(rule_index)
+    }
+
+    /// Return true if dotted rule indicates a completely parsed symbol
+    pub fn dotted_is_completed(&self, dotted_rule: &DottedRule) -> bool {
+        let rule_index = dotted_rule.rule as usize;
         let dot_index = dotted_rule.dot as usize;
         let rule = &self.rules[rule_index];
-        dot_index >= rule.1.len() && self.is_start_rule(rule_index)
+        dot_index >= rule.1.len()
     }
 
     /// Return symbol after the dot or indicate which lhs had been completed if dot is at the end
