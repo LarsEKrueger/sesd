@@ -270,6 +270,18 @@ where
     pub fn predictions_at_cursor(&self) -> Vec<SymbolId> {
         self.parser.predictions(self.buffer.cursor())
     }
+
+    /// Replace a section of the buffer by new tokens
+    ///
+    /// Place the cursor at the end of the inserted text and reparse from start.
+    pub fn replace<I>(&mut self, start: usize, end: usize, iter: I)
+    where
+        I: Iterator<Item = T>,
+    {
+        self.buffer.delete_range(start, end);
+        self.buffer.set_cursor(start);
+        self.enter_iter(iter);
+    }
 }
 
 impl<M> SynchronousEditor<char, M>

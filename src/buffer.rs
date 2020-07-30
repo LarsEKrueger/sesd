@@ -168,6 +168,14 @@ impl<T> Buffer<T> {
         }
     }
 
+    /// Delete tokens in the given range
+    pub fn delete_range(&mut self, start: usize, end: usize) {
+        self.tokens.drain(start..end);
+        if self.cursor > self.len() {
+            self.cursor = self.len();
+        }
+    }
+
     /// Delete the whole content
     pub fn clear(&mut self) {
         self.tokens.clear();
@@ -236,9 +244,18 @@ mod tests {
 
         assert_eq!(buffer.search_forward(0, |b, x| b[x] == 4), Some(2));
         assert_eq!(buffer.search_forward(2, |b, x| b[x] == 4), Some(2));
-        assert_eq!(buffer.search_forward(3, |b, x| x < b.len() && b[x] == 4), None);
-        assert_eq!(buffer.search_forward(4, |b, x| x < b.len() && b[x] == 4), None);
-        assert_eq!(buffer.search_forward(0, |b, x| x < b.len() && b[x] == 8), None);
+        assert_eq!(
+            buffer.search_forward(3, |b, x| x < b.len() && b[x] == 4),
+            None
+        );
+        assert_eq!(
+            buffer.search_forward(4, |b, x| x < b.len() && b[x] == 4),
+            None
+        );
+        assert_eq!(
+            buffer.search_forward(0, |b, x| x < b.len() && b[x] == 8),
+            None
+        );
     }
 
     #[test]
