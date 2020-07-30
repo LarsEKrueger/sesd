@@ -789,6 +789,7 @@ fn main() {
     }
 
     app.update_document(win.get_max_x() as usize);
+    let _ = app.update_prediction();
     app.display(&win);
     app.move_cursor(&win);
     win.refresh();
