@@ -1330,5 +1330,4 @@ pub mod tests {
         parser.print_chart();
         assert_eq!(res, Verdict::Accept);
     }
-
 }
