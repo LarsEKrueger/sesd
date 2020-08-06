@@ -30,7 +30,13 @@ extern crate itertools;
 use libc;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
+
+#[cfg(target_family = "unix")]
 use std::os::unix::fs::OpenOptionsExt;
+
+#[cfg(target_family = "windows")]
+use std::os::windows::fs::OpenOptionsExt;
+
 use std::path::PathBuf;
 
 use pancurses::{endwin, initscr, noecho, Input, Window};
@@ -124,10 +130,15 @@ impl App {
         // Delete everything in case this is used for reverting all changes
         self.editor.clear();
 
-        let mut file = OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_EXCL)
-            .open(&cmd_line.input)?;
+        let mut file = OpenOptions::new();
+        file.read(true);
+
+        #[cfg(target_family = "unix")]
+        file.custom_flags(libc::O_EXCL);
+        #[cfg(target_family = "windows")]
+        file.share_mode(0);
+
+        let mut file = file.open(&cmd_line.input)?;
 
         let mut temp = String::new();
         let _ = file.read_to_string(&mut temp)?;
@@ -157,11 +168,15 @@ impl App {
 
     /// Overwrite the given file with the current buffer content
     fn save_file(&self) -> Result<(), String> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .custom_flags(libc::O_EXCL)
-            .open(&self.filename)
-            .map_err(|e| e.to_string())?;
+        let mut file = OpenOptions::new();
+        file.write(true);
+
+        #[cfg(target_family = "unix")]
+        file.custom_flags(libc::O_EXCL);
+        #[cfg(target_family = "windows")]
+        file.share_mode(0);
+
+        let mut file = file.open(&self.filename).map_err(|e| e.to_string())?;
         file.write(self.editor.as_string().as_bytes())
             .map_err(|e| e.to_string())?;
         Ok(())
@@ -287,10 +302,7 @@ impl App {
 
             Input::KeyF2 => {
                 self.error = match self.save_file() {
-                    Ok(_) => format!(
-                        "Successfully saved »{}«.",
-                        self.filename.to_string_lossy()
-                    ),
+                    Ok(_) => format!("Successfully saved »{}«.", self.filename.to_string_lossy()),
                     Err(msg) => format!(
                         "Error saving file »{}«: {}",
                         self.filename.to_string_lossy(),
@@ -751,7 +763,10 @@ fn main() {
     unsafe { libc::setlocale(libc::LC_ALL, NUL_BYTE_ARRAY[..].as_ptr()) };
 
     // Deactivate pressing Ctrl-C
-    unsafe { libc::signal(libc::SIGINT, libc::SIG_IGN) };
+    #[cfg(target_family = "unix")]
+    unsafe {
+        libc::signal(libc::SIGINT, libc::SIG_IGN)
+    };
 
     let mut app = App {
         editor: Editor::new(grammar),
