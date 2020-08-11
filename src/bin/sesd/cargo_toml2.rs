@@ -27,235 +27,234 @@
 //! This is based on https://github.com/toml-lang/toml/blob/master/toml.abnf, which is
 //! MIT licensed.
 
-use sesd::SymbolId;
-
+use super::look_and_feel::StyleBuilder as SB;
 use super::look_and_feel::{LookAndFeel, Style, StyleMatcher};
 
-mod cargo_toml {
-    use super::SymbolId;
+pub mod cargo_toml {
+    use sesd::SymbolId;
 
     // Non-terminals with empty rules
-    const NON_EOLS: SymbolId = 1;
-    const MAYBE_COMMENT: SymbolId = 2;
-    const MAYBE_INLINE_TABLE_KEYVALS: SymbolId = 3;
-    const MAYBE_INLINE_TABLE_SEPINLINE_TABLE_KEYVALS: SymbolId = 4;
-    const MAYBE_ARRAY_VALUES: SymbolId = 5;
-    const MAYBE_ARRAY_SEP: SymbolId = 6;
-    const WS_COMMENT_NEWLINE: SymbolId = 7;
-    const MAYBE_TIME_SECFRAC: SymbolId = 8;
-    const SIGN: SymbolId = 9;
-    const HEX_INT_REST: SymbolId = 10;
-    const OCT_INT_REST: SymbolId = 11;
-    const BIN_INT_REST: SymbolId = 12;
-    const MAYBE_EXP: SymbolId = 13;
-    const ZERO_PREFIXABLE_INT_REST: SymbolId = 14;
-    const BASIC_CHARS: SymbolId = 15;
-    const MAYBE_MLB_QUOTES: SymbolId = 16;
-    const MLB_QUOTES_CONTENT: SymbolId = 17;
-    const MAYBE_MLB_CONTENT: SymbolId = 18;
-    const WSCHAR_NLS: SymbolId = 19;
-    const MAYBE_LITERAL_CHAR: SymbolId = 20;
-    const MAYBE_MLL_CONTENT: SymbolId = 21;
-    const MAYBE_MLL_QUOTES: SymbolId = 22;
-    const SOME_MLL_QUOTES_CONTENT: SymbolId = 23;
-    const WS: SymbolId = 24;
+    pub const NON_EOLS: SymbolId = 1;
+    pub const MAYBE_COMMENT: SymbolId = 2;
+    pub const MAYBE_INLINE_TABLE_KEYVALS: SymbolId = 3;
+    pub const MAYBE_INLINE_TABLE_SEPINLINE_TABLE_KEYVALS: SymbolId = 4;
+    pub const MAYBE_ARRAY_VALUES: SymbolId = 5;
+    pub const MAYBE_ARRAY_SEP: SymbolId = 6;
+    pub const WS_COMMENT_NEWLINE: SymbolId = 7;
+    pub const MAYBE_TIME_SECFRAC: SymbolId = 8;
+    pub const SIGN: SymbolId = 9;
+    pub const HEX_INT_REST: SymbolId = 10;
+    pub const OCT_INT_REST: SymbolId = 11;
+    pub const BIN_INT_REST: SymbolId = 12;
+    pub const MAYBE_EXP: SymbolId = 13;
+    pub const ZERO_PREFIXABLE_INT_REST: SymbolId = 14;
+    pub const BASIC_CHARS: SymbolId = 15;
+    pub const MAYBE_MLB_QUOTES: SymbolId = 16;
+    pub const MLB_QUOTES_CONTENT: SymbolId = 17;
+    pub const MAYBE_MLB_CONTENT: SymbolId = 18;
+    pub const WSCHAR_NLS: SymbolId = 19;
+    pub const MAYBE_LITERAL_CHAR: SymbolId = 20;
+    pub const MAYBE_MLL_CONTENT: SymbolId = 21;
+    pub const MAYBE_MLL_QUOTES: SymbolId = 22;
+    pub const SOME_MLL_QUOTES_CONTENT: SymbolId = 23;
+    pub const WS: SymbolId = 24;
 
     const NUMBER_OF_EMPTY_NTS: SymbolId = 25;
 
     // Other non-terminals
-    const DOTTED_KEY_REST: SymbolId = 25;
-    const DOTTED_KEY: SymbolId = 26;
-    const DOT_SEP: SymbolId = 27;
-    const KEY: SymbolId = 28;
-    const ONE_STAR_TWO_QUOTATION_MARK: SymbolId = 29;
-    const ONE_STAR_DIGIT: SymbolId = 30;
-    const ONE_MAYBE_MLB_CONTENT: SymbolId = 31;
-    const ONE_MAYBE_MLL_CONTENT: SymbolId = 32;
-    const TWO_DIGIT: SymbolId = 33;
-    const FOUR_DIGIT: SymbolId = 34;
-    const THREE_APOSTROPHE: SymbolId = 35;
-    const FOUR_HEXDIG: SymbolId = 36;
-    const EIGHT_HEXDIG: SymbolId = 37;
-    const ALPHA: SymbolId = 38;
-    const APOSTROPHE: SymbolId = 39;
-    const ARRAY_CLOSE: SymbolId = 40;
-    const ARRAY_OPEN: SymbolId = 41;
-    const ARRAY_SEP: SymbolId = 42;
-    const ARRAY_TABLE_CLOSE: SymbolId = 43;
-    const ARRAY_TABLE_OPEN: SymbolId = 44;
-    const ARRAY_TABLE: SymbolId = 45;
-    const ARRAY_VALUES: SymbolId = 46;
-    const ARRAY: SymbolId = 47;
-    const BASIC_CHAR: SymbolId = 48;
-    const BASIC_STRING: SymbolId = 49;
-    const BASIC_UNESCAPED: SymbolId = 50;
-    const BIN_INT: SymbolId = 51;
-    const BIN_PREFIX: SymbolId = 52;
-    const BOOLEAN: SymbolId = 53;
-    const COMMENT_START_SYMBOL: SymbolId = 54;
-    const COMMENT: SymbolId = 55;
-    const DATE_FULLYEAR: SymbolId = 56;
-    const DATE_MDAY: SymbolId = 57;
-    const DATE_MONTH: SymbolId = 58;
-    const DATE_TIME: SymbolId = 59;
-    const DEC_INT: SymbolId = 60;
-    const DECIMAL_POINT: SymbolId = 61;
-    const DIGIT: SymbolId = 62;
-    const DIGIT_: SymbolId = 63;
-    const DIGITZERO_ONE_: SymbolId = 64;
-    const DIGITZERO_ONE_UNDERSCORE: SymbolId = 65;
-    const DIGITZERO_SEVEN_: SymbolId = 66;
-    const DIGITZERO_SEVEN_UNDERSCORE: SymbolId = 67;
-    const DIGITONE_NINE_: SymbolId = 68;
-    const ESCAPE_SEQ_CHAR: SymbolId = 69;
-    const ESCAPE: SymbolId = 70;
-    const ESCAPED: SymbolId = 71;
-    const EXP: SymbolId = 72;
-    const EXPRESSION: SymbolId = 73;
-    const EXPRESSIONS: SymbolId = 74;
-    const SYM_FALSE: SymbolId = 75;
-    const FLOAT_EXP_PART: SymbolId = 76;
-    const FLOAT_INT_PART: SymbolId = 77;
-    const FLOAT: SymbolId = 78;
-    const FLOAT_REST: SymbolId = 79;
-    const FRAC: SymbolId = 80;
-    const FULL_DATE: SymbolId = 81;
-    const FULL_TIME: SymbolId = 82;
-    const HEX_INT: SymbolId = 83;
-    const HEX_PREFIX: SymbolId = 84;
-    const HEXDIG: SymbolId = 85;
-    const HEXDIG_: SymbolId = 86;
-    const INF: SymbolId = 87;
-    const INLINE_TABLE_CLOSE: SymbolId = 88;
-    const INLINE_TABLE_KEYVALS: SymbolId = 89;
-    const INLINE_TABLE_OPEN: SymbolId = 90;
-    const INLINE_TABLE_SEP: SymbolId = 91;
-    const INLINE_TABLE: SymbolId = 92;
-    const INTEGER: SymbolId = 93;
-    const KEYVAL_SEP: SymbolId = 94;
-    const KEYVAL: SymbolId = 95;
-    const LITERAL_CHAR: SymbolId = 96;
-    const LITERAL_STRING: SymbolId = 97;
-    const LOCAL_DATE_TIME: SymbolId = 98;
-    const LOCAL_DATE: SymbolId = 99;
-    const LOCAL_TIME: SymbolId = 100;
-    const MINUS: SymbolId = 101;
-    const ML_BASIC_BODY: SymbolId = 102;
-    const ML_BASIC_STRING_DELIM: SymbolId = 103;
-    const ML_BASIC_STRING: SymbolId = 104;
-    const ML_LITERAL_BODY: SymbolId = 105;
-    const ML_LITERAL_STRING_DELIM: SymbolId = 106;
-    const ML_LITERAL_STRING: SymbolId = 107;
-    const MLB_CHAR: SymbolId = 108;
-    const MLB_CONTENT: SymbolId = 109;
-    const MLB_ESCAPED_NL: SymbolId = 110;
-    const MLB_QUOTES: SymbolId = 111;
-    const MLB_UNESCAPED: SymbolId = 112;
-    const MLL_CHAR: SymbolId = 113;
-    const MLL_CONTENT: SymbolId = 114;
-    const MLL_QUOTES: SymbolId = 115;
-    const NAN: SymbolId = 116;
-    const NEWLINE: SymbolId = 117;
-    const NON_ASCII: SymbolId = 118;
-    const NON_EOL: SymbolId = 119;
-    const OCT_INT: SymbolId = 120;
-    const OCT_PREFIX: SymbolId = 121;
-    const OFFSET_DATE_TIME: SymbolId = 122;
-    const PARTIAL_TIME: SymbolId = 123;
-    const PLUS: SymbolId = 124;
-    const QUOTATION_MARK: SymbolId = 125;
-    const QUOTED_KEY: SymbolId = 126;
-    const SIMPLE_KEY: SymbolId = 127;
-    const SPECIAL_FLOAT: SymbolId = 128;
-    const STD_TABLE_CLOSE: SymbolId = 129;
-    const STD_TABLE_OPEN: SymbolId = 130;
-    const STD_TABLE: SymbolId = 131;
-    const STRING: SymbolId = 132;
-    const TABLE: SymbolId = 133;
-    const TIME_DELIM: SymbolId = 134;
-    const TIME_HOUR: SymbolId = 135;
-    const TIME_MINUTE: SymbolId = 136;
-    const TIME_NUMOFFSET: SymbolId = 137;
-    const TIME_OFFSET: SymbolId = 138;
-    const TIME_SECFRAC: SymbolId = 139;
-    const TIME_SECOND: SymbolId = 140;
-    const TOML: SymbolId = 141;
-    const SYM_TRUE: SymbolId = 142;
-    const UNDERSCORE: SymbolId = 143;
-    const UNQUOTED_KEY_CHAR: SymbolId = 144;
-    const UNQUOTED_KEY: SymbolId = 145;
-    const UNS_DEC_INT_REST: SymbolId = 146;
-    const UNSIGNED_DEC_INT: SymbolId = 147;
-    const VAL: SymbolId = 148;
-    const WSCHAR_NL: SymbolId = 149;
-    const WSCHAR: SymbolId = 150;
-    const WSCN: SymbolId = 151;
-    const ZERO_PREFIXABLE_INT: SymbolId = 152;
+    pub const DOTTED_KEY_REST: SymbolId = 25;
+    pub const DOTTED_KEY: SymbolId = 26;
+    pub const DOT_SEP: SymbolId = 27;
+    pub const KEY: SymbolId = 28;
+    pub const ONE_STAR_TWO_QUOTATION_MARK: SymbolId = 29;
+    pub const ONE_STAR_DIGIT: SymbolId = 30;
+    pub const ONE_MAYBE_MLB_CONTENT: SymbolId = 31;
+    pub const ONE_MAYBE_MLL_CONTENT: SymbolId = 32;
+    pub const TWO_DIGIT: SymbolId = 33;
+    pub const FOUR_DIGIT: SymbolId = 34;
+    pub const THREE_APOSTROPHE: SymbolId = 35;
+    pub const FOUR_HEXDIG: SymbolId = 36;
+    pub const EIGHT_HEXDIG: SymbolId = 37;
+    pub const ALPHA: SymbolId = 38;
+    pub const APOSTROPHE: SymbolId = 39;
+    pub const ARRAY_CLOSE: SymbolId = 40;
+    pub const ARRAY_OPEN: SymbolId = 41;
+    pub const ARRAY_SEP: SymbolId = 42;
+    pub const ARRAY_TABLE_CLOSE: SymbolId = 43;
+    pub const ARRAY_TABLE_OPEN: SymbolId = 44;
+    pub const ARRAY_TABLE: SymbolId = 45;
+    pub const ARRAY_VALUES: SymbolId = 46;
+    pub const ARRAY: SymbolId = 47;
+    pub const BASIC_CHAR: SymbolId = 48;
+    pub const BASIC_STRING: SymbolId = 49;
+    pub const BASIC_UNESCAPED: SymbolId = 50;
+    pub const BIN_INT: SymbolId = 51;
+    pub const BIN_PREFIX: SymbolId = 52;
+    pub const BOOLEAN: SymbolId = 53;
+    pub const COMMENT_START_SYMBOL: SymbolId = 54;
+    pub const COMMENT: SymbolId = 55;
+    pub const DATE_FULLYEAR: SymbolId = 56;
+    pub const DATE_MDAY: SymbolId = 57;
+    pub const DATE_MONTH: SymbolId = 58;
+    pub const DATE_TIME: SymbolId = 59;
+    pub const DEC_INT: SymbolId = 60;
+    pub const DECIMAL_POINT: SymbolId = 61;
+    pub const DIGIT: SymbolId = 62;
+    pub const DIGIT_: SymbolId = 63;
+    pub const DIGITZERO_ONE_: SymbolId = 64;
+    pub const DIGITZERO_ONE_UNDERSCORE: SymbolId = 65;
+    pub const DIGITZERO_SEVEN_: SymbolId = 66;
+    pub const DIGITZERO_SEVEN_UNDERSCORE: SymbolId = 67;
+    pub const DIGITONE_NINE_: SymbolId = 68;
+    pub const ESCAPE_SEQ_CHAR: SymbolId = 69;
+    pub const ESCAPE: SymbolId = 70;
+    pub const ESCAPED: SymbolId = 71;
+    pub const EXP: SymbolId = 72;
+    pub const EXPRESSION: SymbolId = 73;
+    pub const EXPRESSIONS: SymbolId = 74;
+    pub const SYM_FALSE: SymbolId = 75;
+    pub const FLOAT_EXP_PART: SymbolId = 76;
+    pub const FLOAT_INT_PART: SymbolId = 77;
+    pub const FLOAT: SymbolId = 78;
+    pub const FLOAT_REST: SymbolId = 79;
+    pub const FRAC: SymbolId = 80;
+    pub const FULL_DATE: SymbolId = 81;
+    pub const FULL_TIME: SymbolId = 82;
+    pub const HEX_INT: SymbolId = 83;
+    pub const HEX_PREFIX: SymbolId = 84;
+    pub const HEXDIG: SymbolId = 85;
+    pub const HEXDIG_: SymbolId = 86;
+    pub const INF: SymbolId = 87;
+    pub const INLINE_TABLE_CLOSE: SymbolId = 88;
+    pub const INLINE_TABLE_KEYVALS: SymbolId = 89;
+    pub const INLINE_TABLE_OPEN: SymbolId = 90;
+    pub const INLINE_TABLE_SEP: SymbolId = 91;
+    pub const INLINE_TABLE: SymbolId = 92;
+    pub const INTEGER: SymbolId = 93;
+    pub const KEYVAL_SEP: SymbolId = 94;
+    pub const KEYVAL: SymbolId = 95;
+    pub const LITERAL_CHAR: SymbolId = 96;
+    pub const LITERAL_STRING: SymbolId = 97;
+    pub const LOCAL_DATE_TIME: SymbolId = 98;
+    pub const LOCAL_DATE: SymbolId = 99;
+    pub const LOCAL_TIME: SymbolId = 100;
+    pub const MINUS: SymbolId = 101;
+    pub const ML_BASIC_BODY: SymbolId = 102;
+    pub const ML_BASIC_STRING_DELIM: SymbolId = 103;
+    pub const ML_BASIC_STRING: SymbolId = 104;
+    pub const ML_LITERAL_BODY: SymbolId = 105;
+    pub const ML_LITERAL_STRING_DELIM: SymbolId = 106;
+    pub const ML_LITERAL_STRING: SymbolId = 107;
+    pub const MLB_CHAR: SymbolId = 108;
+    pub const MLB_CONTENT: SymbolId = 109;
+    pub const MLB_ESCAPED_NL: SymbolId = 110;
+    pub const MLB_QUOTES: SymbolId = 111;
+    pub const MLB_UNESCAPED: SymbolId = 112;
+    pub const MLL_CHAR: SymbolId = 113;
+    pub const MLL_CONTENT: SymbolId = 114;
+    pub const MLL_QUOTES: SymbolId = 115;
+    pub const NAN: SymbolId = 116;
+    pub const NEWLINE: SymbolId = 117;
+    pub const NON_ASCII: SymbolId = 118;
+    pub const NON_EOL: SymbolId = 119;
+    pub const OCT_INT: SymbolId = 120;
+    pub const OCT_PREFIX: SymbolId = 121;
+    pub const OFFSET_DATE_TIME: SymbolId = 122;
+    pub const PARTIAL_TIME: SymbolId = 123;
+    pub const PLUS: SymbolId = 124;
+    pub const QUOTATION_MARK: SymbolId = 125;
+    pub const QUOTED_KEY: SymbolId = 126;
+    pub const SIMPLE_KEY: SymbolId = 127;
+    pub const SPECIAL_FLOAT: SymbolId = 128;
+    pub const STD_TABLE_CLOSE: SymbolId = 129;
+    pub const STD_TABLE_OPEN: SymbolId = 130;
+    pub const STD_TABLE: SymbolId = 131;
+    pub const STRING: SymbolId = 132;
+    pub const TABLE: SymbolId = 133;
+    pub const TIME_DELIM: SymbolId = 134;
+    pub const TIME_HOUR: SymbolId = 135;
+    pub const TIME_MINUTE: SymbolId = 136;
+    pub const TIME_NUMOFFSET: SymbolId = 137;
+    pub const TIME_OFFSET: SymbolId = 138;
+    pub const TIME_SECFRAC: SymbolId = 139;
+    pub const TIME_SECOND: SymbolId = 140;
+    pub const TOML: SymbolId = 141;
+    pub const SYM_TRUE: SymbolId = 142;
+    pub const UNDERSCORE: SymbolId = 143;
+    pub const UNQUOTED_KEY_CHAR: SymbolId = 144;
+    pub const UNQUOTED_KEY: SymbolId = 145;
+    pub const UNS_DEC_INT_REST: SymbolId = 146;
+    pub const UNSIGNED_DEC_INT: SymbolId = 147;
+    pub const VAL: SymbolId = 148;
+    pub const WSCHAR_NL: SymbolId = 149;
+    pub const WSCHAR: SymbolId = 150;
+    pub const WSCN: SymbolId = 151;
+    pub const ZERO_PREFIXABLE_INT: SymbolId = 152;
 
     // Terminal symbols
-    const T_MINUS: SymbolId = 153; //    Exact('-')
-    const T_SPACE: SymbolId = 154; //    Exact(' ')
-    const T_BANG: SymbolId = 155; //    Exact('!')
-    const T_DQUOT: SymbolId = 156; //    Exact('"')
-    const T_HASH: SymbolId = 157; //    Exact('#')
-    const T_COMMA: SymbolId = 158; //    Exact(',')
-    const T_DOT: SymbolId = 159; //    Exact('.')
-    const T_COLON: SymbolId = 160; //    Exact(':')
-    const T_SQ_OPEN: SymbolId = 161; //    Exact('[')
-    const T_TICK: SymbolId = 162; //    Exact('\'')
-    const T_BACKSLASH: SymbolId = 163; //    Exact('\\')
-    const T_TAB: SymbolId = 164; //    Exact('\t')
-    const T_NL: SymbolId = 165; //    Exact('\x0A')
-    const T_CR: SymbolId = 166; //    Exact('\x0D')
-    const T_22: SymbolId = 167; //    Exact('\x22')
-    const T_2D: SymbolId = 168; //    Exact('\x2D')
-    const T_55: SymbolId = 169; //    Exact('\x55')
-    const T_5C: SymbolId = 170; //    Exact('\x5C')
-    const T_5F: SymbolId = 171; //    Exact('\x5F')
-    const T_62: SymbolId = 172; //    Exact('\x62')
-    const T_66: SymbolId = 173; //    Exact('\x66')
-    const T_6E: SymbolId = 174; //    Exact('\x6E')
-    const T_72: SymbolId = 175; //    Exact('\x72')
-    const T_74: SymbolId = 176; //    Exact('\x74')
-    const T_75: SymbolId = 177; //    Exact('\x75')
-    const T_SQ_CLOSE: SymbolId = 178; //    Exact(']')
-    const T_UNDERSCORE: SymbolId = 179; //    Exact('_')
-    const T_CURLY_OPEN: SymbolId = 180; //    Exact('{')
-    const T_CURLY_CLOSE: SymbolId = 181; //    Exact('}')
-    const T_PLUS: SymbolId = 182; //    Exact('+')
-    const T_EQUAL: SymbolId = 183; //    Exact('=')
-    const T_ZERO: SymbolId = 184; //    Exact('0')
-    const T_A: SymbolId = 185; //    Exact('a')
-    const T_B: SymbolId = 186; //    Exact('b')
-    const T_E: SymbolId = 187; //    Exact('e')
-    const T_F: SymbolId = 188; //    Exact('f')
-    const T_I: SymbolId = 189; //    Exact('i')
-    const T_L: SymbolId = 190; //    Exact('l')
-    const T_N: SymbolId = 191; //    Exact('n')
-    const T_O: SymbolId = 192; //    Exact('o')
-    const T_R: SymbolId = 193; //    Exact('r')
-    const T_S: SymbolId = 194; //    Exact('s')
-    const T_LC_T: SymbolId = 195; //    Exact('t')
-    const T_UC_T: SymbolId = 196; //    Exact('T')
-    const T_U: SymbolId = 197; //    Exact('u')
-    const T_X: SymbolId = 198; //    Exact('x')
-    const T_LC_Z: SymbolId = 199; //    Exact('z')
-    const T_UC_Z: SymbolId = 200; //    Exact('Z')
-    const T_80_D7FF: SymbolId = 201; //    Range('\u{80}', '\u{D7FF}')
-    const T_E000_10FFFF: SymbolId = 202; //    Range('\u{E000}', '\u{10FFFF}')
-    const T_20_26: SymbolId = 203; //    Range('\x20', '\x26')
-    const T_20_7F: SymbolId = 204; //    Range('\x20', '\x7F')
-    const T_23_5B: SymbolId = 205; //    Range('\x23', '\x5B')
-    const T_28_7E: SymbolId = 206; //    Range('\x28', '\x7E')
-    const T_5D_7E: SymbolId = 207; //    Range('\x5D', '\x7E')
-    const T_0_1: SymbolId = 208; //    Range('0', '1')
-    const T_0_7: SymbolId = 209; //    Range('0', '7')
-    const T_0_9: SymbolId = 210; //    Range('0', '9')
-    const T_1_9: SymbolId = 211; //    Range('1', '9')
-    const T_LC_A_F: SymbolId = 212; //    Range('a', 'f')
-    const T_UC_A_F: SymbolId = 213; //    Range('A', 'F')
-    const T_UC_A_Z: SymbolId = 214; //    Range('A', 'Z')
-    const T_LC_A_Z: SymbolId = 215; //    Range('a', 'z')
+    pub const T_MINUS: SymbolId = 153; //    Exact('-')
+    pub const T_SPACE: SymbolId = 154; //    Exact(' ')
+    pub const T_BANG: SymbolId = 155; //    Exact('!')
+    pub const T_DQUOT: SymbolId = 156; //    Exact('"')
+    pub const T_HASH: SymbolId = 157; //    Exact('#')
+    pub const T_COMMA: SymbolId = 158; //    Exact(',')
+    pub const T_DOT: SymbolId = 159; //    Exact('.')
+    pub const T_COLON: SymbolId = 160; //    Exact(':')
+    pub const T_SQ_OPEN: SymbolId = 161; //    Exact('[')
+    pub const T_TICK: SymbolId = 162; //    Exact('\'')
+    pub const T_BACKSLASH: SymbolId = 163; //    Exact('\\')
+    pub const T_TAB: SymbolId = 164; //    Exact('\t')
+    pub const T_NL: SymbolId = 165; //    Exact('\x0A')
+    pub const T_CR: SymbolId = 166; //    Exact('\x0D')
+    pub const T_22: SymbolId = 167; //    Exact('\x22')
+    pub const T_2D: SymbolId = 168; //    Exact('\x2D')
+    pub const T_55: SymbolId = 169; //    Exact('\x55')
+    pub const T_5C: SymbolId = 170; //    Exact('\x5C')
+    pub const T_5F: SymbolId = 171; //    Exact('\x5F')
+    pub const T_62: SymbolId = 172; //    Exact('\x62')
+    pub const T_66: SymbolId = 173; //    Exact('\x66')
+    pub const T_6E: SymbolId = 174; //    Exact('\x6E')
+    pub const T_72: SymbolId = 175; //    Exact('\x72')
+    pub const T_74: SymbolId = 176; //    Exact('\x74')
+    pub const T_75: SymbolId = 177; //    Exact('\x75')
+    pub const T_SQ_CLOSE: SymbolId = 178; //    Exact(']')
+    pub const T_UNDERSCORE: SymbolId = 179; //    Exact('_')
+    pub const T_CURLY_OPEN: SymbolId = 180; //    Exact('{')
+    pub const T_CURLY_CLOSE: SymbolId = 181; //    Exact('}')
+    pub const T_PLUS: SymbolId = 182; //    Exact('+')
+    pub const T_EQUAL: SymbolId = 183; //    Exact('=')
+    pub const T_ZERO: SymbolId = 184; //    Exact('0')
+    pub const T_A: SymbolId = 185; //    Exact('a')
+    pub const T_B: SymbolId = 186; //    Exact('b')
+    pub const T_E: SymbolId = 187; //    Exact('e')
+    pub const T_F: SymbolId = 188; //    Exact('f')
+    pub const T_I: SymbolId = 189; //    Exact('i')
+    pub const T_L: SymbolId = 190; //    Exact('l')
+    pub const T_N: SymbolId = 191; //    Exact('n')
+    pub const T_O: SymbolId = 192; //    Exact('o')
+    pub const T_R: SymbolId = 193; //    Exact('r')
+    pub const T_S: SymbolId = 194; //    Exact('s')
+    pub const T_LC_T: SymbolId = 195; //    Exact('t')
+    pub const T_UC_T: SymbolId = 196; //    Exact('T')
+    pub const T_U: SymbolId = 197; //    Exact('u')
+    pub const T_X: SymbolId = 198; //    Exact('x')
+    pub const T_LC_Z: SymbolId = 199; //    Exact('z')
+    pub const T_UC_Z: SymbolId = 200; //    Exact('Z')
+    pub const T_80_D7FF: SymbolId = 201; //    Range('\u{80}', '\u{D7FF}')
+    pub const T_E000_10FFFF: SymbolId = 202; //    Range('\u{E000}', '\u{10FFFF}')
+    pub const T_20_26: SymbolId = 203; //    Range('\x20', '\x26')
+    pub const T_20_7F: SymbolId = 204; //    Range('\x20', '\x7F')
+    pub const T_23_5B: SymbolId = 205; //    Range('\x23', '\x5B')
+    pub const T_28_7E: SymbolId = 206; //    Range('\x28', '\x7E')
+    pub const T_5D_7E: SymbolId = 207; //    Range('\x5D', '\x7E')
+    pub const T_0_1: SymbolId = 208; //    Range('0', '1')
+    pub const T_0_7: SymbolId = 209; //    Range('0', '7')
+    pub const T_0_9: SymbolId = 210; //    Range('0', '9')
+    pub const T_1_9: SymbolId = 211; //    Range('1', '9')
+    pub const T_LC_A_F: SymbolId = 212; //    Range('a', 'f')
+    pub const T_UC_A_F: SymbolId = 213; //    Range('A', 'F')
+    pub const T_UC_A_Z: SymbolId = 214; //    Range('A', 'Z')
+    pub const T_LC_A_Z: SymbolId = 215; //    Range('a', 'z')
 
     const NT_NAMES: [&str; 153] = [
         "~~~ERROR~~~",
@@ -480,7 +479,8 @@ mod cargo_toml {
         Range('a', 'z'),
     ];
 
-    const RULES: [(SymbolId, &[SymbolId]); 239] = [
+    const RULES: [(SymbolId, &[SymbolId]); 240] = [
+        (sesd::ERROR_ID, &[]),
         (ALPHA, &[T_UC_A_Z]),
         (ALPHA, &[T_LC_A_Z]),
         (DIGIT, &[T_0_9]),
@@ -839,6 +839,109 @@ mod cargo_toml {
             TERMINALS[term as usize].clone()
         }
     }
+}
+
+pub fn grammar() -> cargo_toml::Grammar {
+    cargo_toml::Grammar {}
+}
+
+/// Build the style sheet for Cargo.toml files
+pub fn look_and_feel() -> LookAndFeel {
+    let mut sheet = LookAndFeel::new(Style::none());
+
+    use cargo_toml::*;
+
+    // Table headers, underlined
+    sheet.add_style(
+        StyleMatcher::new(SB::new().u().s)
+            .exact(TOML)
+            .star(EXPRESSIONS)
+            .exact(EXPRESSION)
+            .exact(TABLE),
+    );
+
+    // Comments, italic
+    sheet.add_style(
+        StyleMatcher::new(SB::new().i().s)
+            .exact(TOML)
+            .star(EXPRESSIONS)
+            .exact(EXPRESSION)
+            .exact(MAYBE_COMMENT)
+            .exact(COMMENT),
+    );
+
+    // Keys, cyan on black
+    sheet.add_style(
+        StyleMatcher::new(SB::new().cp(pancurses::ColorPair(0o60)).s)
+            .exact(TOML)
+            .star(EXPRESSIONS)
+            .exact(EXPRESSION)
+            .exact(KEYVAL)
+            .exact(KEY),
+    );
+
+    // String values, magenta on black
+    sheet.add_style(
+        StyleMatcher::new(SB::new().cp(pancurses::ColorPair(0o50)).s)
+            .exact(TOML)
+            .star(EXPRESSIONS)
+            .exact(EXPRESSION)
+            .exact(KEYVAL)
+            .exact(VAL)
+            .exact(STRING),
+    );
+
+    // Array values, magenta on black, underline
+    sheet.add_style(
+        StyleMatcher::new(SB::new().cp(pancurses::ColorPair(0o50)).u().s)
+            .exact(TOML)
+            .star(EXPRESSIONS)
+            .exact(EXPRESSION)
+            .exact(KEYVAL)
+            .exact(VAL)
+            .exact(ARRAY),
+    );
+
+    // Struct values, magenta on black, italic
+    sheet.add_style(
+        StyleMatcher::new(SB::new().cp(pancurses::ColorPair(0o50)).i().s)
+            .exact(TOML)
+            .star(EXPRESSIONS)
+            .exact(EXPRESSION)
+            .exact(KEYVAL)
+            .exact(VAL)
+            .exact(INLINE_TABLE),
+    );
+
+    // Any error, white on red
+    sheet.add_style(
+        StyleMatcher::new(SB::new().cp(pancurses::ColorPair(0o71)).i().s).skip_to(sesd::ERROR_ID),
+    );
+
+    // Predictions
+    sheet.add_prediction(
+        TABLE,
+        &[
+            "[package]",
+            "[lib]",
+            "[[bin]]",
+            "[[example]]",
+            "[[test]]",
+            "[[bench]]",
+            "[dependencies]",
+            "[dev-dependencies]",
+            "[build-dependencies]",
+            "[target]",
+            "[badges]",
+            "[features]",
+            "[patch]",
+            "[replace]",
+            "[profile]",
+            "[workspace]",
+        ],
+    );
+
+    sheet
 }
 
 #[cfg(test)]

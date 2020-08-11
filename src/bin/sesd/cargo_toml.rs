@@ -29,6 +29,7 @@
 
 use sesd::{char::CharMatcher, DynamicGrammar, TextGrammar, TextRule, TextSymbol, ERROR_ID};
 
+use super::look_and_feel::StyleBuilder as SB;
 use super::look_and_feel::{LookAndFeel, Style, StyleMatcher};
 
 /// Build the grammar for TOML files
@@ -40,37 +41,6 @@ pub fn grammar() -> DynamicGrammar<char, CharMatcher> {
     grammar
         .compile()
         .expect("compiling built-in grammar should not fail")
-}
-
-// Style Builder
-struct SB {
-    pub s: Style,
-}
-
-impl SB {
-    fn new() -> Self {
-        Self { s: Style::none() }
-    }
-
-    fn b(mut self) -> Self {
-        self.s.attr.set_bold(true);
-        self
-    }
-
-    fn i(mut self) -> Self {
-        self.s.attr.set_italic(true);
-        self
-    }
-
-    fn u(mut self) -> Self {
-        self.s.attr.set_underline(true);
-        self
-    }
-
-    fn cp(mut self, c: pancurses::ColorPair) -> Self {
-        self.s.attr.set_color_pair(c);
-        self
-    }
 }
 
 /// Build the style sheet for Cargo.toml files

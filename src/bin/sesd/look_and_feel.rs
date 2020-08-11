@@ -59,6 +59,11 @@ pub type StyleMatcher = sesd::style_sheet::StyleMatcher<Style>;
 /// Re-export the style look up result for brevity
 pub type LookedUp<'a> = sesd::style_sheet::LookedUp<'a, Style>;
 
+/// Style Builder
+pub struct StyleBuilder {
+    pub s: Style,
+}
+
 impl Style {
     pub fn none() -> Self {
         Self {
@@ -103,5 +108,31 @@ impl LookAndFeel {
             .flat_map(|p| p.iter())
             .map(|s| s.clone())
             .collect()
+    }
+}
+
+impl StyleBuilder {
+    pub fn new() -> Self {
+        Self { s: Style::none() }
+    }
+
+    pub fn b(mut self) -> Self {
+        self.s.attr.set_bold(true);
+        self
+    }
+
+    pub fn i(mut self) -> Self {
+        self.s.attr.set_italic(true);
+        self
+    }
+
+    pub fn u(mut self) -> Self {
+        self.s.attr.set_underline(true);
+        self
+    }
+
+    pub fn cp(mut self, c: pancurses::ColorPair) -> Self {
+        self.s.attr.set_color_pair(c);
+        self
     }
 }
