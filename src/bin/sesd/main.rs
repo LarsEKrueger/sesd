@@ -42,9 +42,12 @@ use std::path::PathBuf;
 use pancurses::{endwin, initscr, noecho, Input, Window};
 use structopt::StructOpt;
 
-use sesd::{char::CharMatcher, CstIterItem, SymbolId, SynchronousEditor};
+use sesd::{
+    char::CharMatcher, CompiledGrammar, CstIterItem, DynamicGrammar, SymbolId, SynchronousEditor,
+};
 
 mod cargo_toml;
+mod cargo_toml2;
 mod look_and_feel;
 use look_and_feel::{LookAndFeel, LookedUp, Style};
 
@@ -56,7 +59,7 @@ struct CommandLine {
     input: PathBuf,
 }
 
-type Editor = SynchronousEditor<char, CharMatcher>;
+type Editor = SynchronousEditor<char, CharMatcher, DynamicGrammar<char, CharMatcher>>;
 
 /// Syntactical element to be displayed
 struct SynElement {
@@ -484,7 +487,7 @@ impl App {
                             trace!(
                                 "{}, {}-{}",
                                 self.editor
-                                    .grammar()
+                                    .parser()
                                     .dotted_rule_to_string(&item.dotted_rule)
                                     .unwrap(),
                                 item.start,
@@ -494,7 +497,7 @@ impl App {
                                 let dr = self.editor.parser().dotted_rule(n);
                                 trace!(
                                     "   {}",
-                                    self.editor.grammar().dotted_rule_to_string(&dr).unwrap()
+                                    self.editor.parser().dotted_rule_to_string(&dr).unwrap()
                                 );
                             }
                         }
@@ -523,7 +526,7 @@ impl App {
                         "{}: {}, {}-{}",
                         rendered_until,
                         self.editor
-                            .grammar()
+                            .parser()
                             .dotted_rule_to_string(&cst_node.dotted_rule)
                             .unwrap(),
                         cst_node.start,

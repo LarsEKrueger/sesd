@@ -27,7 +27,6 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::Hash;
-use std::io::Write;
 use std::marker::PhantomData;
 
 use itertools::Itertools;
@@ -63,46 +62,6 @@ pub trait Matcher<T> {
     fn matches(&self, t: T) -> bool;
 }
 
-/// Grammar Symbols, terminals and non-terminals.
-///
-/// The terminal symbols hold matcher instances to match against the input tokens of type `T`. The
-/// non-terminals hold their name.
-#[derive(Debug)]
-pub enum Symbol<M> {
-    /// Terminals are of the same type as in the Buffer struct.
-    Terminal(M),
-    /// Non-terminals are identified by a string, which is later used for debugging and error messages.
-    NonTerminal(String),
-}
-
-/// A grammar rule or production, e.g. S -> A B c.
-#[derive(Debug)]
-pub struct Rule<M> {
-    /// Name of a non-terminal symbol.
-    lhs: String,
-    rhs: Vec<Symbol<M>>,
-}
-
-/// Grammar builder, textual representation of productions rules: S -> A B C
-///
-/// When a grammar has been completely defined, it needs to be compiled to be used by the parser.
-/// This will create the look-up tables required for efficient parsing.
-#[derive(Debug)]
-pub struct Grammar<T, M>
-where
-    M: Matcher<T> + std::fmt::Debug,
-    T: std::fmt::Debug,
-{
-    /// Rule table
-    rules: Vec<Rule<M>>,
-
-    /// Non-terminal that
-    start: String,
-
-    /// Marker to indicate the T is used indirectly by Matcher
-    _marker: PhantomData<T>,
-}
-
 /// Symbol IDs are indices into the symbol table. As such, the can be fairly small integers to
 /// save space. 16 bit should be sufficient for all purposes. If not, file a feature request.
 pub type SymbolId = u16;
@@ -113,7 +72,7 @@ const MAX_SYMBOL_ID: SymbolId = std::u16::MAX;
 /// ID of the pseudo-non-terminal to represent parsing errors
 pub const ERROR_ID: SymbolId = 0;
 
-/// Checked and compacted representation of a grammar.
+/// Trait to access a checked and compacted representation of a grammar.
 ///
 /// Symbols (terminals and non-terminals) are identified by small integers. For debugging and
 /// queries, the names of the non-terminals are kept in a table. The matchers of terminals are kept in a
@@ -123,9 +82,95 @@ pub const ERROR_ID: SymbolId = 0;
 /// used for debugging and error messages. The terminals cannot be queried from the public API,
 /// thus all parameters of type `SymbolId` refer to non-terminal symbols.
 ///
+/// The following invariant for rhs of rules holds: If a symbol id < nt_count(), it is a non-terminal.
+/// All other ids are terminal symbols. If a symbol id < nt_empty_count(), the symbol has an empty
+/// rule. If the internal represenation of the trait implementation encodes the rules differently,
+/// `rhs()` needs to convert the data accordingly.
+///
 /// TODO: Make finding rules of NonTerminal more efficient. Sort rules by lhs. Either keep separate table of
 /// first fule index or store first rule index in rhs instead of symbol index.
-pub struct CompiledGrammar<T, M>
+pub trait CompiledGrammar<T, M>
+where
+    M: Matcher<T>,
+{
+    /// Id of the start symbol
+    fn start_symbol(&self) -> SymbolId;
+
+    /// Number of rules.
+    ///
+    /// Calls to `lhs` and `rhs` will always be below the returned number.
+    fn rules_count(&self) -> usize;
+
+    /// Left-hand-side symbol of a rule
+    fn lhs(&self, rule: usize) -> SymbolId;
+
+    /// Right-hand-side symbols of a rule.
+    ///
+    /// The following invariant for the return value holds: If a symbol id < nt_count(), it is a
+    /// non-terminal. All other ids are terminal symbols. If a symbol id < nt_empty_count(), the
+    /// symbol has an empty rule. If the internal represenation of the trait implementation encodes
+    /// the rules differently, `rhs()` needs to convert the data accordingly.
+    fn rhs(&self, rule: usize) -> &[SymbolId];
+
+    /// Printable name of a non-terminal
+    fn nt_name(&self, nt: SymbolId) -> &str;
+
+    /// Number of non-terminal symbols
+    fn nt_count(&self) -> SymbolId;
+
+    /// Number of terminal symbols
+    fn t_count(&self) -> SymbolId;
+
+    /// Number of non-terminal symbols that have empty rules.
+    fn nt_empty_count(&self) -> SymbolId;
+
+    /// Return a matcher for a given terminal symbol. The symbol has been corrected by the number
+    /// of non-terminal symbols already.
+    fn matcher(&self, term: SymbolId) -> M;
+}
+
+/// Grammar symbols, terminals and non-terminals, in textual representation.
+///
+/// The terminal symbols hold matcher instances to match against the input tokens of type `T`. The
+/// non-terminals hold their name.
+#[derive(Debug)]
+pub enum TextSymbol<M> {
+    /// Terminals are of the same type as in the Buffer struct.
+    Terminal(M),
+    /// Non-terminals are identified by a string, which is later used for debugging and error messages.
+    NonTerminal(String),
+}
+
+/// A grammar rule or production, e.g. S -> A B c, in textual representation.
+#[derive(Debug)]
+pub struct TextRule<M> {
+    /// Name of a non-terminal symbol.
+    lhs: String,
+    rhs: Vec<TextSymbol<M>>,
+}
+
+/// Grammar builder, textual representation of productions rules: S -> A B C
+///
+/// When a grammar has been completely defined, it needs to be compiled to be used by the parser.
+/// This will create the look-up tables required for efficient parsing.
+#[derive(Debug)]
+pub struct TextGrammar<T, M>
+where
+    M: Matcher<T> + std::fmt::Debug,
+    T: std::fmt::Debug,
+{
+    /// Rule table
+    rules: Vec<TextRule<M>>,
+
+    /// Non-terminal that
+    start: String,
+
+    /// Marker to indicate the T is used indirectly by Matcher
+    _marker: PhantomData<T>,
+}
+
+/// Machine readable representation of a grammar, dynamically built from e.g. a TextGrammar.
+pub struct DynamicGrammar<T, M>
 where
     M: Matcher<T>,
 {
@@ -150,25 +195,6 @@ where
 
     /// Marker to indicate the T is used indirectly by Matcher
     _marker: std::marker::PhantomData<T>,
-}
-
-/// Decoded symbol right of the dot in a dotted rule.
-pub enum CompiledSymbol<M> {
-    /// Dot was at the end of the rule. Return the LHS of the rule.
-    Completed(SymbolId),
-    /// Dot was on a nonterminal symbol.
-    NonTerminal(SymbolId),
-    /// Dot was on a terminal.
-    Terminal(M),
-}
-
-/// Dotted rule from Earley Algorithm.
-#[derive(PartialEq, Debug, Clone)]
-pub struct DottedRule {
-    /// Index into rule table
-    pub rule: SymbolId,
-    /// Index into rhs of rule
-    dot: SymbolId,
 }
 
 impl<T> Matcher<T> for T
@@ -198,7 +224,7 @@ fn update_symbol(
     }
 }
 
-impl<T, M> Grammar<T, M>
+impl<T, M> TextGrammar<T, M>
 where
     M: Matcher<T> + Hash + Ord + Clone + std::fmt::Debug,
     T: std::fmt::Debug,
@@ -216,17 +242,17 @@ where
     /// side.
     ///
     /// Obsolete interface. Use [add](#method.add).
-    pub fn add_rule(&mut self, lhs: String, rhs: Vec<Symbol<M>>) {
-        self.rules.push(Rule { lhs, rhs });
+    pub fn add_rule(&mut self, lhs: String, rhs: Vec<TextSymbol<M>>) {
+        self.rules.push(TextRule { lhs, rhs });
     }
 
     /// Add a rule.
-    pub fn add(&mut self, rule: Rule<M>) {
+    pub fn add(&mut self, rule: TextRule<M>) {
         self.rules.push(rule);
     }
 
     /// Set the start symbol. This can be overwritten and may contain an unknown symbol until just
-    /// before [compile](method.compile) is called.
+    /// before [compile](#method.compile) is called.
     pub fn set_start(&mut self, sym: String) {
         self.start = sym;
     }
@@ -234,7 +260,7 @@ where
     /// Compile the grammar for efficient use.
     ///
     /// If the given grammar is incorrect or inconsistent, return an error.
-    pub fn compile(self) -> Result<CompiledGrammar<T, M>> {
+    pub fn compile(self) -> Result<DynamicGrammar<T, M>> {
         // Build symbol table. Remember for each symbol if it has been seen on the lhs and assign a
         // symbol ID.
         let mut symbol_set = HashMap::new();
@@ -271,10 +297,10 @@ where
             // TODO?: Reject if left recursive rule
             for s in r.rhs.iter() {
                 match s {
-                    Symbol::Terminal(t) => {
+                    TextSymbol::Terminal(t) => {
                         terminal_set.insert(t);
                     }
-                    Symbol::NonTerminal(nt) => {
+                    TextSymbol::NonTerminal(nt) => {
                         if nt.is_empty() {
                             return Err(Error::EmptySymbol);
                         }
@@ -343,13 +369,13 @@ where
                 .rhs
                 .iter()
                 .map(|it| match it {
-                    Symbol::Terminal(t) => {
+                    TextSymbol::Terminal(t) => {
                         let t_id = terminal_table
                             .binary_search(t)
                             .expect("rhs terminal should be known");
                         (t_id + nonterminal_table.len()) as SymbolId
                     }
-                    Symbol::NonTerminal(nt) => {
+                    TextSymbol::NonTerminal(nt) => {
                         let nt_id = symbol_set.get(nt).expect("rhs symbol should be known").1;
                         nt_id as SymbolId
                     }
@@ -366,7 +392,7 @@ where
             .1;
         let start = start as SymbolId;
 
-        Ok(CompiledGrammar {
+        Ok(DynamicGrammar {
             nonterminal_table,
             terminal_table,
             rules,
@@ -377,7 +403,7 @@ where
     }
 }
 
-impl<M> Rule<M> {
+impl<M> TextRule<M> {
     /// Create a new rule for the given symbol.
     ///
     /// ```ignore
@@ -410,7 +436,7 @@ impl<M> Rule<M> {
     ///
     /// in [BNF](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form).
     pub fn nt(mut self, nt: &str) -> Self {
-        self.rhs.push(Symbol::NonTerminal(nt.to_string()));
+        self.rhs.push(TextSymbol::NonTerminal(nt.to_string()));
         self
     }
 
@@ -427,7 +453,7 @@ impl<M> Rule<M> {
     ///
     /// in [BNF](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form).
     pub fn t(mut self, t: M) -> Self {
-        self.rhs.push(Symbol::Terminal(t));
+        self.rhs.push(TextSymbol::Terminal(t));
         self
     }
 
@@ -446,75 +472,57 @@ impl<M> Rule<M> {
     /// in [BNF](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form).
     pub fn ts(mut self, iter: impl Iterator<Item = M>) -> Self {
         for t in iter {
-            self.rhs.push(Symbol::Terminal(t));
+            self.rhs.push(TextSymbol::Terminal(t));
         }
         self
     }
 }
 
-impl<T, M> CompiledGrammar<T, M>
+impl<T, M> CompiledGrammar<T, M> for DynamicGrammar<T, M>
 where
     M: Matcher<T> + Clone,
 {
-    /// Number of rules in the grammqr
-    pub fn rule_count(&self) -> usize {
+    fn start_symbol(&self) -> SymbolId {
+        self.start
+    }
+
+    fn rules_count(&self) -> usize {
         self.rules.len()
     }
 
-    /// Check if rule with index `i` has the start symbol as lhs symbol.
-    pub fn is_start_rule(&self, i: usize) -> bool {
-        self.rules[i].0 == self.start
+    fn lhs(&self, rule: usize) -> SymbolId {
+        self.rules[rule].0
     }
 
-    /// Check if the given symbol is the start symbol.
-    pub fn is_start_symbol(&self, sym: SymbolId) -> bool {
-        self.start == sym
+    fn rhs(&self, rule: usize) -> &[SymbolId] {
+        &self.rules[rule].1
     }
 
-    /// Check if the rule with index `i` as the given symbol as lhs.
-    pub fn lhs_is(&self, i: usize, sym: SymbolId) -> bool {
-        self.rules[i].0 == sym
+    fn nt_name(&self, nt: SymbolId) -> &str {
+        &self.nonterminal_table[nt as usize]
     }
 
-    /// Return true if dotted rule indicates a completely parsed start symbol, i.e. a successful
-    /// parse.
-    pub fn dotted_is_completed_start(&self, dotted_rule: &DottedRule) -> bool {
-        let rule_index = dotted_rule.rule as usize;
-        self.dotted_is_completed(dotted_rule) && self.is_start_rule(rule_index)
+    fn nt_count(&self) -> SymbolId {
+        self.nonterminal_table.len() as SymbolId
     }
 
-    /// Return true if dotted rule indicates a completely parsed symbol
-    pub fn dotted_is_completed(&self, dotted_rule: &DottedRule) -> bool {
-        let rule_index = dotted_rule.rule as usize;
-        let dot_index = dotted_rule.dot as usize;
-        let rule = &self.rules[rule_index];
-        dot_index >= rule.1.len()
+    fn t_count(&self) -> SymbolId {
+        self.terminal_table.len() as SymbolId
     }
 
-    /// Return symbol after the dot or indicate which lhs had been completed if dot is at the end
-    pub fn dotted_symbol(&self, dotted_rule: &DottedRule) -> CompiledSymbol<M> {
-        let rule_index = dotted_rule.rule as usize;
-        let dot_index = dotted_rule.dot as usize;
-        let rule = &self.rules[rule_index];
-        if dot_index < rule.1.len() {
-            let sym = rule.1[dot_index];
-            if (sym as usize) < self.nonterminal_table.len() {
-                return CompiledSymbol::NonTerminal(sym);
-            } else {
-                let t_ind = (sym as usize) - self.nonterminal_table.len();
-                return CompiledSymbol::Terminal(self.terminal_table[t_ind].clone());
-            }
-        }
-        CompiledSymbol::Completed(rule.0)
+    fn nt_empty_count(&self) -> SymbolId {
+        self.empty_rules
     }
 
-    /// Borrow the name of a non-terminal given its ID.
-    ///
-    /// Passing an invalid SymbolId results in a panic.
-    pub fn nt_name<'a>(&'a self, sym: SymbolId) -> &'a str {
-        &self.nonterminal_table[sym as usize]
+    fn matcher(&self, term: SymbolId) -> M {
+        self.terminal_table[term as usize].clone()
     }
+}
 
+impl<T, M> DynamicGrammar<T, M>
+where
+    M: Matcher<T>,
+{
     /// Convert the name of non-terminal to its SymbolId.
     ///
     /// Unknown names are returned as MAX_SYMBOL_ID.
@@ -528,125 +536,57 @@ where
         }
         MAX_SYMBOL_ID
     }
-
-    /// Convert a list of non-terminal names to SymbolIds.
-    ///
-    /// Unknown names are returned as MAX_SYMBOL_ID.
-    ///
-    /// This function is slow and should not be used for mass queries.
-    pub fn nt_ids(&self, names: &[&str]) -> Vec<SymbolId> {
-        names.iter().map(|n| self.nt_id(n)).collect()
-    }
-
-    /// Get the lhs of rule with index `i`
-    pub fn lhs(&self, i: usize) -> SymbolId {
-        self.rules[i as usize].0
-    }
-
-    /// Check if the non-terminal symbol has empty rules
-    pub fn nt_with_empty_rule(&self, sym: SymbolId) -> bool {
-        sym < self.empty_rules
-    }
 }
 
-impl<T, M> CompiledGrammar<T, M>
-where
-    M: Matcher<T> + Clone + std::fmt::Debug,
-{
-    /// Write a reabale form of a dotted rule to the given Writer instance.
-    ///
-    /// Debug function. Creates unicode characters that might not display correctly on old
-    /// terminals.
-    pub fn write_dotted_rule(
-        &self,
-        writer: &mut dyn Write,
-        dotted_rule: &DottedRule,
-    ) -> std::io::Result<()> {
-        let rule_index = dotted_rule.rule as usize;
-        let dot_index = dotted_rule.dot as usize;
-        let rule = &self.rules[rule_index];
-        write!(writer, "{} → ", self.nonterminal_table[rule.0 as usize])?;
-        for i in 0..rule.1.len() {
-            if i == dot_index {
-                write!(writer, "• ")?;
-            }
-            let sym = rule.1[i];
-            if (sym as usize) < self.nonterminal_table.len() {
-                write!(writer, "{} ", self.nonterminal_table[sym as usize])?;
-            } else {
-                let t_ind = (sym as usize) - self.nonterminal_table.len();
-                write!(writer, "'{:?}' ", self.terminal_table[t_ind])?;
-            }
-        }
-        if dot_index == rule.1.len() {
-            write!(writer, "• ")?;
-        }
-        Ok(())
-    }
-
-    /// Convert a dotted rule to a string if possible.
-    ///
-    /// Debug function. Creates unicode characters that might not display correctly on old
-    /// terminals.
-    pub fn dotted_rule_to_string(&self, dotted_rule: &DottedRule) -> std::io::Result<String> {
-        let mut line = Vec::new();
-        self.write_dotted_rule(&mut line, dotted_rule)?;
-        Ok(String::from_utf8_lossy(&line).into_owned())
-    }
-
-    /// Print a dotted rule to stdout if possible.
-    ///
-    /// Debug function. Creates unicode characters that might not display correctly on old
-    /// terminals.
-    pub fn print_dotted_rule(&self, dotted_rule: &DottedRule) -> std::io::Result<()> {
-        self.write_dotted_rule(&mut std::io::stdout(), dotted_rule)
-    }
-
-    /// Log the tables as debug
-    pub fn debug_tables(&self) {
-        debug!("Non terminal table");
-        for (i, n) in self.nonterminal_table.iter().enumerate() {
-            debug!("  {:6}: {}", i, n);
-        }
-        for (i, n) in self.terminal_table.iter().enumerate() {
-            debug!("  {:6}: {:?}", i + self.nonterminal_table.len(), n);
-        }
-    }
-}
-
-impl DottedRule {
-    /// Create a dotted rule for the rule with index `rule_id` and the dot on the left of the first
-    /// symbol on the rhs.
-    pub fn new(rule_id: usize) -> Self {
-        Self {
-            rule: rule_id as SymbolId,
-            dot: 0,
-        }
-    }
-
-    /// Return a new dotted rule where the dot was moved one symbol to the right.
-    pub fn advance_dot(&self) -> Self {
-        Self {
-            rule: self.rule,
-            dot: self.dot + 1,
-        }
-    }
-
-    /// Return true if the dot is on the left of the first symbol on the rhs.
-    pub fn is_first(&self) -> bool {
-        self.dot == 0
-    }
-}
-
-impl<M> CompiledSymbol<M> {
-    /// Return true if the symbol represents a completed rule.
-    pub fn is_complete(&self) -> bool {
-        match *self {
-            Self::Completed(_) => true,
-            _ => false,
-        }
-    }
-}
+//   impl<T, M> CompiledGrammar<T, M>
+//   where
+//       M: Matcher<T> + Clone,
+//   {
+//       /// Check if rule with index `i` has the start symbol as lhs symbol.
+//       pub fn is_start_rule(&self, i: usize) -> bool {
+//           self.rules[i].0 == self.start
+//       }
+//
+//       /// Check if the given symbol is the start symbol.
+//       pub fn is_start_symbol(&self, sym: SymbolId) -> bool {
+//           self.start == sym
+//       }
+//
+//       /// Check if the rule with index `i` as the given symbol as lhs.
+//       pub fn lhs_is(&self, i: usize, sym: SymbolId) -> bool {
+//           self.rules[i].0 == sym
+//       }
+//
+//       /// Return true if dotted rule indicates a completely parsed start symbol, i.e. a successful
+//       /// parse.
+//       pub fn dotted_is_completed_start(&self, dotted_rule: &DottedRule) -> bool {
+//           let rule_index = dotted_rule.rule as usize;
+//           self.dotted_is_completed(dotted_rule) && self.is_start_rule(rule_index)
+//       }
+//
+//       /// Return true if dotted rule indicates a completely parsed symbol
+//       pub fn dotted_is_completed(&self, dotted_rule: &DottedRule) -> bool {
+//           let rule_index = dotted_rule.rule as usize;
+//           let dot_index = dotted_rule.dot as usize;
+//           let rule = &self.rules[rule_index];
+//           dot_index >= rule.1.len()
+//       }
+//
+//       /// Convert a list of non-terminal names to SymbolIds.
+//       ///
+//       /// Unknown names are returned as MAX_SYMBOL_ID.
+//       ///
+//       /// This function is slow and should not be used for mass queries.
+//       pub fn nt_ids(&self, names: &[&str]) -> Vec<SymbolId> {
+//           names.iter().map(|n| self.nt_id(n)).collect()
+//       }
+//
+//       /// Check if the non-terminal symbol has empty rules
+//       pub fn nt_with_empty_rule(&self, sym: SymbolId) -> bool {
+//           sym < self.empty_rules
+//       }
+//   }
+//
 
 #[cfg(test)]
 pub mod tests {
@@ -667,92 +607,60 @@ pub mod tests {
     /// Noun → “denver”
     /// Verb → “called”
     /// Prep → “from”
-    pub fn define_grammar() -> Grammar<char, CharMatcher> {
-        let mut grammar: Grammar<char, CharMatcher> = Grammar::new();
+    pub fn define_grammar() -> TextGrammar<char, CharMatcher> {
+        let mut grammar: TextGrammar<char, CharMatcher> = TextGrammar::new();
 
         use CharMatcher::*;
-        use Symbol::*;
         grammar.set_start("S".to_string());
-        grammar.add_rule(
-            "S".to_string(),
-            vec![NonTerminal("NP".to_string()), NonTerminal("VP".to_string())],
+        grammar.add(TextRule::new("S").nt("NP").nt("VP"));
+        grammar.add(TextRule::new("NP").nt("NP").nt("PP"));
+        grammar.add(TextRule::new("NP").nt("Noun"));
+        grammar.add(TextRule::new("VP").nt("Verb").nt("NP"));
+        grammar.add(TextRule::new("VP").nt("VP").nt("PP"));
+        grammar.add(TextRule::new("PP").nt("Prep").nt("NP"));
+        grammar.add(
+            TextRule::new("Noun")
+                .t(Exact('j'))
+                .t(Exact('o'))
+                .t(Exact('h'))
+                .t(Exact('n'))
+                .t(Exact(' ')),
         );
-        grammar.add_rule(
-            "NP".to_string(),
-            vec![NonTerminal("NP".to_string()), NonTerminal("PP".to_string())],
+        grammar.add(
+            TextRule::new("Noun")
+                .t(Exact('m'))
+                .t(Exact('a'))
+                .t(Exact('r'))
+                .t(Exact('y'))
+                .t(Exact(' ')),
         );
-        grammar.add_rule("NP".to_string(), vec![NonTerminal("Noun".to_string())]);
-        grammar.add_rule(
-            "VP".to_string(),
-            vec![
-                NonTerminal("Verb".to_string()),
-                NonTerminal("NP".to_string()),
-            ],
+        grammar.add(
+            TextRule::new("Noun")
+                .t(Exact('d'))
+                .t(Exact('e'))
+                .t(Exact('n'))
+                .t(Exact('v'))
+                .t(Exact('e'))
+                .t(Exact('r'))
+                .t(Exact(' ')),
         );
-        grammar.add_rule(
-            "VP".to_string(),
-            vec![NonTerminal("VP".to_string()), NonTerminal("PP".to_string())],
+        grammar.add(
+            TextRule::new("Verb")
+                .t(Exact('c'))
+                .t(Exact('a'))
+                .t(Exact('l'))
+                .t(Exact('l'))
+                .t(Exact('e'))
+                .t(Exact('d'))
+                .t(Exact(' ')),
         );
-        grammar.add_rule(
-            "PP".to_string(),
-            vec![
-                NonTerminal("Prep".to_string()),
-                NonTerminal("NP".to_string()),
-            ],
-        );
-        grammar.add_rule(
-            "Noun".to_string(),
-            vec![
-                Terminal(Exact('j')),
-                Terminal(Exact('o')),
-                Terminal(Exact('h')),
-                Terminal(Exact('n')),
-                Terminal(Exact(' ')),
-            ],
-        );
-        grammar.add_rule(
-            "Noun".to_string(),
-            vec![
-                Terminal(Exact('m')),
-                Terminal(Exact('a')),
-                Terminal(Exact('r')),
-                Terminal(Exact('y')),
-                Terminal(Exact(' ')),
-            ],
-        );
-        grammar.add_rule(
-            "Noun".to_string(),
-            vec![
-                Terminal(Exact('d')),
-                Terminal(Exact('e')),
-                Terminal(Exact('n')),
-                Terminal(Exact('v')),
-                Terminal(Exact('e')),
-                Terminal(Exact('r')),
-                Terminal(Exact(' ')),
-            ],
-        );
-        grammar.add_rule(
-            "Verb".to_string(),
-            vec![
-                Terminal(Exact('c')),
-                Terminal(Exact('a')),
-                Terminal(Exact('l')),
-                Terminal(Exact('l')),
-                Terminal(Exact('e')),
-                Terminal(Exact('d')),
-                Terminal(Exact(' ')),
-            ],
-        );
-        grammar.add_rule(
-            "Prep".to_string(),
-            vec![
-                Terminal(Exact('f')),
-                Terminal(Exact('r')),
-                Terminal(Exact('o')),
-                Terminal(Exact('m')),
-                Terminal(Exact(' ')),
-            ],
+        grammar.add(
+            TextRule::new("Prep")
+                .t(Exact('f'))
+                .t(Exact('r'))
+                .t(Exact('o'))
+                .t(Exact('m'))
+                .t(Exact(' ')),
         );
 
         grammar

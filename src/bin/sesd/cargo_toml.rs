@@ -27,12 +27,12 @@
 //! This is based on https://github.com/toml-lang/toml/blob/master/toml.abnf, which is
 //! MIT licensed.
 
-use sesd::{char::CharMatcher, CompiledGrammar, Grammar, Rule, Symbol, ERROR_ID};
+use sesd::{char::CharMatcher, DynamicGrammar, TextGrammar, TextRule, TextSymbol, ERROR_ID};
 
 use super::look_and_feel::{LookAndFeel, Style, StyleMatcher};
 
 /// Build the grammar for TOML files
-pub fn grammar() -> CompiledGrammar<char, CharMatcher> {
+pub fn grammar() -> DynamicGrammar<char, CharMatcher> {
     let mut grammar = grammar_nostart();
 
     grammar.set_start("toml".to_string());
@@ -74,7 +74,7 @@ impl SB {
 }
 
 /// Build the style sheet for Cargo.toml files
-pub fn look_and_feel(grammar: &CompiledGrammar<char, CharMatcher>) -> LookAndFeel {
+pub fn look_and_feel(grammar: &DynamicGrammar<char, CharMatcher>) -> LookAndFeel {
     let mut sheet = LookAndFeel::new(Style::none());
 
     // Table headers, underlined
@@ -173,11 +173,11 @@ pub fn look_and_feel(grammar: &CompiledGrammar<char, CharMatcher>) -> LookAndFee
 /// Internal function to support testing
 ///
 /// No start symbol is set, thus sub-rules can be tested.
-fn grammar_nostart() -> Grammar<char, CharMatcher> {
-    let mut grammar = Grammar::<char, CharMatcher>::new();
+fn grammar_nostart() -> TextGrammar<char, CharMatcher> {
+    let mut grammar = TextGrammar::<char, CharMatcher>::new();
 
     use CharMatcher::*;
-    use Symbol::*;
+    use TextSymbol::*;
 
     grammar.add_rule("ALPHA".to_string(), vec![Terminal(Range('A', 'Z'))]);
     grammar.add_rule("ALPHA".to_string(), vec![Terminal(Range('a', 'z'))]);
@@ -408,7 +408,7 @@ fn grammar_nostart() -> Grammar<char, CharMatcher> {
         ],
     );
     grammar.add_rule(
-        "[comment".to_string(),
+        "[comment]".to_string(),
         vec![NonTerminal("comment".to_string())],
     );
     grammar.add_rule("[comment]".to_string(), vec![]);
@@ -1223,8 +1223,8 @@ fn grammar_nostart() -> Grammar<char, CharMatcher> {
             NonTerminal("val".to_string()),
         ],
     );
-    grammar.add(Rule::new("key").nt("simple-key"));
-    grammar.add(Rule::new("key").nt("dotted-key"));
+    grammar.add(TextRule::new("key").nt("simple-key"));
+    grammar.add(TextRule::new("key").nt("dotted-key"));
     grammar.add_rule(
         "simple-key".to_string(),
         vec![NonTerminal("quoted-key".to_string())],
@@ -1269,18 +1269,22 @@ fn grammar_nostart() -> Grammar<char, CharMatcher> {
         vec![NonTerminal("literal-string".to_string())],
     );
     grammar.add(
-        Rule::new("dotted-key")
+        TextRule::new("dotted-key")
             .nt("simple-key")
             .nt("dotted-key-rest"),
     );
     grammar.add(
-        Rule::new("dotted-key-rest")
+        TextRule::new("dotted-key-rest")
             .nt("dot-sep")
             .nt("simple-key")
             .nt("dotted-key-rest"),
     );
-    grammar.add(Rule::new("dotted-key-rest").nt("dot-sep").nt("simple-key"));
-    grammar.add(Rule::new("dot-sep").nt("ws").t(Exact('.')).nt("ws"));
+    grammar.add(
+        TextRule::new("dotted-key-rest")
+            .nt("dot-sep")
+            .nt("simple-key"),
+    );
+    grammar.add(TextRule::new("dot-sep").nt("ws").t(Exact('.')).nt("ws"));
     grammar.add_rule(
         "keyval-sep".to_string(),
         vec![
@@ -1319,7 +1323,8 @@ pub mod tests {
 
         let compiled_grammar = grammar.compile().expect("compilation should have worked");
 
-        let mut parser = Parser::<char, CharMatcher>::new(compiled_grammar);
+        let mut parser =
+            Parser::<char, CharMatcher, DynamicGrammar<char, CharMatcher>>::new(compiled_grammar);
         let mut position = 0;
         for (i, c) in "[key.rest".chars().enumerate() {
             let res = parser.update(i, c);

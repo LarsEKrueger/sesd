@@ -25,8 +25,10 @@
 //! Earley Parser
 
 use itertools::Itertools;
+use std::io::Write;
+use std::marker::PhantomData;
 
-use super::grammar::{CompiledGrammar, CompiledSymbol, DottedRule, Matcher, SymbolId, ERROR_ID};
+use super::grammar::{CompiledGrammar, Matcher, SymbolId, ERROR_ID};
 
 /// Entry in the parsing chart. Dotted rule indicate next symbol to be parsed
 /// (terminal/non-terminal). Second field is start position in the token buffer.
@@ -59,6 +61,25 @@ struct CstEdge {
 /// List of edges at a given buffer position
 type CstList = Vec<CstEdge>;
 
+/// Decoded symbol right of the dot in a dotted rule.
+pub enum RightOfDot<M> {
+    /// Dot was at the end of the rule. Return the LHS of the rule.
+    Completed(SymbolId),
+    /// Dot was on a nonterminal symbol.
+    NonTerminal(SymbolId),
+    /// Dot was on a terminal.
+    Terminal(M),
+}
+
+/// Dotted rule from Earley Algorithm.
+#[derive(PartialEq, Debug, Clone)]
+pub struct DottedRule {
+    /// Index into rule table
+    pub rule: SymbolId,
+    /// Index into rhs of rule
+    dot: SymbolId,
+}
+
 /// Earley Parser on streams.
 ///
 /// Incrementally parse the input steam using the Earley Algorithm. Does not store any parsed
@@ -67,12 +88,13 @@ type CstList = Vec<CstEdge>;
 ///
 /// It is technically possible to change the grammar on the fly, but not implemented. File a
 /// feature request if you need that.
-pub struct Parser<T, M>
+pub struct Parser<T, M, G>
 where
     M: Matcher<T>,
+    G: CompiledGrammar<T, M>,
 {
     /// Compiled grammar to parse.
-    grammar: CompiledGrammar<T, M>,
+    grammar: G,
 
     /// Parsing chart.
     ///
@@ -100,6 +122,11 @@ where
     /// The value is to interpreted as the index into the chart from which the scanner reads to
     /// check if the current token matches.
     valid_entries: usize,
+
+    /// Phantom data to make compiler happy
+    _marker_t: PhantomData<T>,
+    /// Phantom data to make compiler happy
+    _marker_m: PhantomData<M>,
 }
 
 /// Result of parser update.
@@ -161,12 +188,13 @@ pub enum CstIterItem {
 /// Iterator to access the parse tree in pre-order.
 ///
 /// Returns all parsed nodes, then the index of the first unparsed position of the buffer.
-pub struct CstIter<'a, T, M>
+pub struct CstIter<'a, T, M, G>
 where
     M: Matcher<T>,
+    G: CompiledGrammar<T, M>,
 {
     /// The parser
-    parser: &'a Parser<T, M>,
+    parser: &'a Parser<T, M, G>,
 
     /// Graph nodes to be visited.
     /// Contains (item, completed)
@@ -204,36 +232,91 @@ fn add_to_cst_list(cst_list: &mut CstList, entry: CstEdge) {
 }
 
 /// Predict function of the Earley Algorithm.
-fn predict<T, M>(
-    state_list: &mut StateList,
-    symbol: SymbolId,
-    dot_buffer: usize,
-    grammar: &CompiledGrammar<T, M>,
-) where
+fn predict<T, M, G>(state_list: &mut StateList, symbol: SymbolId, dot_buffer: usize, grammar: &G)
+where
     M: Matcher<T> + Clone,
+    G: CompiledGrammar<T, M>,
 {
-    for i in 0..grammar.rule_count() {
-        if grammar.lhs_is(i, symbol) {
+    for i in 0..grammar.rules_count() {
+        if grammar.lhs(i) == symbol {
             let new_entry = (DottedRule::new(i), dot_buffer);
             add_to_state_list(state_list, new_entry);
         }
     }
 }
 
-impl<T, M> Parser<T, M>
+impl<M> RightOfDot<M> {
+    /// Return true if the symbol represents a completed rule.
+    pub fn is_complete(&self) -> bool {
+        match *self {
+            Self::Completed(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Return true if the symbol represents a completed rule with a given symbol.
+    pub fn is_completed(&self, sym: SymbolId) -> bool {
+        match *self {
+            Self::Completed(s) => sym == s,
+            _ => false,
+        }
+    }
+}
+
+impl DottedRule {
+    /// Create a dotted rule for the rule with index `rule_id` and the dot on the left of the first
+    /// symbol on the rhs.
+    pub fn new(rule_id: usize) -> Self {
+        Self {
+            rule: rule_id as SymbolId,
+            dot: 0,
+        }
+    }
+
+    /// Return a new dotted rule where the dot was moved one symbol to the right.
+    pub fn advance_dot(&self) -> Self {
+        Self {
+            rule: self.rule,
+            dot: self.dot + 1,
+        }
+    }
+
+    /// Return true if the dot is on the left of the first symbol on the rhs.
+    pub fn is_first(&self) -> bool {
+        self.dot == 0
+    }
+}
+
+impl<T, M, G> Parser<T, M, G>
 where
     T: Clone,
     M: Matcher<T> + Clone,
+    G: CompiledGrammar<T, M>,
 {
     /// Create a new parser, given a grammar.
-    pub fn new(grammar: CompiledGrammar<T, M>) -> Self {
+    pub fn new(grammar: G) -> Self {
+        // Construct an empty parser.
+        let mut parser = Self {
+            grammar,
+            chart: Vec::new(),
+            cst: Vec::new(),
+            valid_entries: 0,
+            _marker_t: PhantomData,
+            _marker_m: PhantomData,
+        };
+
+        parser.prepare_chart();
+        parser
+    }
+
+    fn prepare_chart(&mut self) {
         // Index 0 is special: It contains all the predictions of the start symbol. As the chart is
         // only extended while parsing, chart entries before the current one aren't changed. Thus,
         // the fully predicted chart[0] only needs to be generated once.
         let mut start_set = Vec::new();
         // Fill in the rules that have the start symbol as lhs.
-        for i in 0..grammar.rule_count() {
-            if grammar.is_start_rule(i) {
+        for i in 0..self.grammar.rules_count() {
+            if self.grammar.lhs(i) == self.grammar.start_symbol() {
                 let new_entry = (DottedRule::new(i), 0);
                 add_to_state_list(&mut start_set, new_entry);
             }
@@ -245,26 +328,26 @@ where
         let mut new_cst_list = Vec::new();
         let mut i = 0;
         while i < start_set.len() {
-            match grammar.dotted_symbol(&start_set[i].0) {
-                CompiledSymbol::NonTerminal(nt) => {
-                    predict(&mut start_set, nt, 0, &grammar);
-                    if grammar.nt_with_empty_rule(nt) {
+            match self.dotted_symbol(&start_set[i].0) {
+                RightOfDot::NonTerminal(nt) => {
+                    predict(&mut start_set, nt, 0, &self.grammar);
+                    if nt < self.grammar.nt_empty_count() {
                         let new_entry = (start_set[i].0.advance_dot(), start_set[i].1);
                         add_to_state_list(&mut start_set, new_entry);
                     }
                 }
-                CompiledSymbol::Terminal(_) => {
+                RightOfDot::Terminal(_) => {
                     // Can't do anything as we don't know the first token.
                 }
-                CompiledSymbol::Completed(completed) => {
+                RightOfDot::Completed(completed) => {
                     // Complete
                     let start = start_set[i].1;
                     // Check all the rules at *start* if the dot is at the completed symbol. Start
                     // must be 0. Thus a double-borrow would occur of this done with an iterator.
                     let mut rule_index = 0;
                     while rule_index < start_set.len() {
-                        if let CompiledSymbol::NonTerminal(maybe_completed) =
-                            grammar.dotted_symbol(&start_set[rule_index].0)
+                        if let RightOfDot::NonTerminal(maybe_completed) =
+                            self.dotted_symbol(&start_set[rule_index].0)
                         {
                             if maybe_completed == completed {
                                 // Update the Earley chart
@@ -307,26 +390,37 @@ where
             i += 1;
         }
 
-        let mut chart = Vec::new();
-        chart.push(start_set);
-        let mut cst = Vec::new();
-        cst.push(new_cst_list);
-        Self {
-            grammar,
-            chart,
-            cst,
-            valid_entries: 0,
-        }
+        self.chart.clear();
+        self.chart.push(start_set);
+        self.cst.clear();
+        self.cst.push(new_cst_list);
     }
 
     /// Borrow the grammar
-    pub fn grammar<'a>(&'a self) -> &'a CompiledGrammar<T, M> {
+    pub fn grammar<'a>(&'a self) -> &'a G {
         &self.grammar
     }
 
     /// Get the dotted rule from a CST path node.
     pub fn dotted_rule(&self, node: &CstPathNode) -> DottedRule {
         self.chart[node.position][node.state as usize].0.clone()
+    }
+
+    /// Return symbol after the dot or indicate which lhs had been completed if dot is at the end
+    pub fn dotted_symbol(&self, dotted_rule: &DottedRule) -> RightOfDot<M> {
+        let rule_index = dotted_rule.rule as usize;
+        let dot_index = dotted_rule.dot as usize;
+        let rhs = self.grammar.rhs(rule_index);
+        if dot_index < rhs.len() {
+            let sym = rhs[dot_index];
+            if sym < self.grammar.nt_count() {
+                return RightOfDot::NonTerminal(sym);
+            } else {
+                let t_ind = sym - self.grammar.nt_count();
+                return RightOfDot::Terminal(self.grammar.matcher(t_ind).clone());
+            }
+        }
+        RightOfDot::Completed(self.grammar.lhs(rule_index))
     }
 
     /// The buffer has changed at `position`. All parse entries are invalid beginning with the given
@@ -396,7 +490,7 @@ where
         let mut scanned = false;
         for (state_index, state) in state_list.iter().enumerate() {
             let dr = &state.0;
-            if let CompiledSymbol::Terminal(t) = self.grammar.dotted_symbol(&dr) {
+            if let RightOfDot::Terminal(t) = self.dotted_symbol(&dr) {
                 if t.matches(token.clone()) {
                     // Successful, advance the dot and store in new_state
                     let new_entry = (dr.advance_dot(), state.1);
@@ -434,7 +528,7 @@ where
             // Only process the existing entries.
             for i in 0..self.chart[position].len() {
                 let dr = &self.chart[position][i].0;
-                if let CompiledSymbol::Terminal(_t) = self.grammar.dotted_symbol(&dr) {
+                if let RightOfDot::Terminal(_t) = self.dotted_symbol(&dr) {
                     // Pretend to be successful, advance the dot and store in new_state
                     let new_entry = (dr.advance_dot(), self.chart[position][i].1);
                     let new_state = add_to_state_list(&mut self.chart[new_position], new_entry);
@@ -460,15 +554,15 @@ where
         let mut start_rule_completed = false;
         let mut i = 0;
         while i < self.chart[new_position].len() {
-            match self.grammar.dotted_symbol(&self.chart[new_position][i].0) {
-                CompiledSymbol::NonTerminal(nt) => {
+            match self.dotted_symbol(&self.chart[new_position][i].0) {
+                RightOfDot::NonTerminal(nt) => {
                     predict(
                         &mut self.chart[new_position],
                         nt,
                         new_position,
                         &self.grammar,
                     );
-                    if self.grammar.nt_with_empty_rule(nt) {
+                    if nt < self.grammar.nt_empty_count() {
                         let new_entry = (
                             self.chart[new_position][i].0.advance_dot(),
                             self.chart[new_position][i].1,
@@ -486,19 +580,19 @@ where
                         );
                     }
                 }
-                CompiledSymbol::Terminal(_) => {
+                RightOfDot::Terminal(_) => {
                     // Can't do anything as we don't know the new token.
                 }
-                CompiledSymbol::Completed(completed) => {
+                RightOfDot::Completed(completed) => {
                     // Complete
                     start_rule_completed =
-                        start_rule_completed | self.grammar.is_start_symbol(completed);
+                        start_rule_completed | (self.grammar.start_symbol() == completed);
                     let start = self.chart[new_position][i].1;
                     // Check all the rules at *start* if the dot is at the completed symbol
                     let mut rule_index = 0;
                     while rule_index < self.chart[start].len() {
-                        if let CompiledSymbol::NonTerminal(maybe_completed) =
-                            self.grammar.dotted_symbol(&self.chart[start][rule_index].0)
+                        if let RightOfDot::NonTerminal(maybe_completed) =
+                            self.dotted_symbol(&self.chart[start][rule_index].0)
                         {
                             if maybe_completed == completed {
                                 // Update the Earley chart
@@ -559,7 +653,7 @@ where
     }
 
     /// Return a pre-order CST iterator, starting at the last position that accepted the input.
-    pub fn cst_iter(&self) -> CstIter<T, M> {
+    pub fn cst_iter(&self) -> CstIter<T, M, G> {
         // Collect all the entries that complete a start symbol. Search backwards from the last
         // entry.
         let mut stack = Vec::new();
@@ -572,7 +666,10 @@ where
         loop {
             for (rule_index, rule) in self.chart[position].iter().enumerate() {
                 // If the rule indicates a completed start symbol, push it to the stack.
-                if self.grammar.dotted_is_completed_start(&rule.0) {
+                if self
+                    .dotted_symbol(&rule.0)
+                    .is_completed(self.grammar.start_symbol())
+                {
                     stack.push((
                         CstPathNode {
                             position,
@@ -634,7 +731,7 @@ where
             CstIterItem::Parsed(n) => {
                 if n.start != position
                     && n.end == position
-                    && !self.grammar.dotted_is_completed(&n.dotted_rule)
+                    && !self.dotted_symbol(&n.dotted_rule).is_complete()
                 {
                     let lhs = self.grammar.lhs(n.dotted_rule.rule as usize);
                     Some((lhs, n.start))
@@ -673,9 +770,11 @@ where
     }
 }
 
-impl<'a, T, M> Iterator for CstIter<'a, T, M>
+impl<'a, T, M, G> Iterator for CstIter<'a, T, M, G>
 where
     M: Matcher<T> + Clone,
+    G: CompiledGrammar<T, M>,
+    T: Clone,
 {
     type Item = CstIterItem;
 
@@ -709,7 +808,7 @@ where
                                 let is_result = if *processed {
                                     let dr =
                                         &self.parser.chart[node.position][node.state as usize].0;
-                                    self.parser.grammar.dotted_symbol(dr).is_complete()
+                                    self.parser.dotted_symbol(dr).is_complete()
                                 } else {
                                     false
                                 };
@@ -758,19 +857,83 @@ where
     }
 }
 
-impl<T, M> Parser<T, M>
+impl<T, M, G> Parser<T, M, G>
 where
     M: Matcher<T> + Clone + PartialEq + std::fmt::Debug,
+    G: CompiledGrammar<T, M>,
 {
+    /// Write a reabale form of a dotted rule to the given Writer instance.
+    ///
+    /// Debug function. Creates unicode characters that might not display correctly on old
+    /// terminals.
+    pub fn write_dotted_rule(
+        &self,
+        writer: &mut dyn Write,
+        dotted_rule: &DottedRule,
+    ) -> std::io::Result<()> {
+        let rule_index = dotted_rule.rule as usize;
+        let dot_index = dotted_rule.dot as usize;
+        let rhs = self.grammar.rhs(rule_index);
+        write!(
+            writer,
+            "{} → ",
+            self.grammar.nt_name(self.grammar.lhs(rule_index))
+        )?;
+        for i in 0..rhs.len() {
+            if i == dot_index {
+                write!(writer, "• ")?;
+            }
+            let sym = rhs[i];
+            if sym < self.grammar.nt_count() {
+                write!(writer, "{} ", self.grammar.nt_name(sym))?;
+            } else {
+                let t_ind = sym - self.grammar.nt_count();
+                write!(writer, "'{:?}' ", self.grammar.matcher(t_ind))?;
+            }
+        }
+        if dot_index == rhs.len() {
+            write!(writer, "• ")?;
+        }
+        Ok(())
+    }
+
+    /// Convert a dotted rule to a string if possible.
+    ///
+    /// Debug function. Creates unicode characters that might not display correctly on old
+    /// terminals.
+    pub fn dotted_rule_to_string(&self, dotted_rule: &DottedRule) -> std::io::Result<String> {
+        let mut line = Vec::new();
+        self.write_dotted_rule(&mut line, dotted_rule)?;
+        Ok(String::from_utf8_lossy(&line).into_owned())
+    }
+
+    /// Print a dotted rule to stdout if possible.
+    ///
+    /// Debug function. Creates unicode characters that might not display correctly on old
+    /// terminals.
+    pub fn print_dotted_rule(&self, dotted_rule: &DottedRule) -> std::io::Result<()> {
+        self.write_dotted_rule(&mut std::io::stdout(), dotted_rule)
+    }
+
+    /// Log the tables as debug
+    pub fn debug_tables(&self) {
+        debug!("Non terminal table");
+        let nt_count = self.grammar.nt_count();
+        for i in 0..nt_count {
+            let n = self.grammar.nt_name(i);
+            debug!("  {:6}: {}", i, n);
+        }
+        for i in 0..self.grammar.t_count() {
+            let n = self.grammar.matcher(i);
+            debug!("  {:6}: {:?}", i + nt_count, n);
+        }
+    }
+
     pub fn print_chart(&self) {
         for i in 0..=self.valid_entries {
             println!("chart[{}]:", i);
             for e in self.chart[i].iter() {
-                println!(
-                    "  {}, [{}]",
-                    self.grammar.dotted_rule_to_string(&e.0).unwrap(),
-                    e.1
-                );
+                println!("  {}, [{}]", self.dotted_rule_to_string(&e.0).unwrap(), e.1);
             }
         }
     }
@@ -782,7 +945,7 @@ where
                 trace!(
                     "  {:6}: {}, [{}]",
                     j,
-                    self.grammar.dotted_rule_to_string(&e.0).unwrap(),
+                    self.dotted_rule_to_string(&e.0).unwrap(),
                     e.1
                 );
             }
@@ -802,7 +965,7 @@ mod tests {
 
     use super::super::char::CharMatcher;
     use super::super::grammar::tests::define_grammar;
-    use super::super::grammar::{Grammar, Symbol};
+    use super::super::grammar::{DynamicGrammar, TextGrammar};
 
     /// Define the grammar from: https://www.cs.unm.edu/~luger/ai-final2/CH9_Dynamic%20Programming%20and%20the%20Earley%20Parser.pdf
     ///
@@ -816,10 +979,11 @@ mod tests {
         Denver,
     }
 
-    fn print_cst_as_dot<T, M>(parser: &Parser<T, M>, prefix: &str, preorder: bool)
+    fn print_cst_as_dot<T, M, G>(parser: &Parser<T, M, G>, prefix: &str, preorder: bool)
     where
-        M: Matcher<T> + Clone + std::fmt::Debug,
+        M: Matcher<T> + Clone + std::fmt::Debug + PartialEq,
         T: Clone,
+        G: CompiledGrammar<T, M>,
     {
         // Print the parse tree for dot
         println!("\n{}:\tdigraph {{", prefix);
@@ -831,7 +995,7 @@ mod tests {
                     prefix,
                     chart_index,
                     state_index,
-                    parser.grammar.dotted_rule_to_string(&state.0).unwrap(),
+                    parser.dotted_rule_to_string(&state.0).unwrap(),
                     state.1,
                     chart_index
                 );
@@ -885,43 +1049,22 @@ mod tests {
     /// Noun → “denver”
     /// Verb → “called”
     /// Prep → “from”
-    pub fn token_grammar() -> Grammar<Token, Token> {
-        let mut grammar: Grammar<Token, Token> = Grammar::new();
+    pub fn token_grammar() -> TextGrammar<Token, Token> {
+        let mut grammar: TextGrammar<Token, Token> = TextGrammar::new();
 
-        use super::super::grammar::Symbol::*;
+        use super::super::grammar::TextRule;
         grammar.set_start("S".to_string());
-        grammar.add_rule(
-            "S".to_string(),
-            vec![NonTerminal("NP".to_string()), NonTerminal("VP".to_string())],
-        );
-        grammar.add_rule(
-            "NP".to_string(),
-            vec![NonTerminal("NP".to_string()), NonTerminal("PP".to_string())],
-        );
-        grammar.add_rule("NP".to_string(), vec![NonTerminal("Noun".to_string())]);
-        grammar.add_rule(
-            "VP".to_string(),
-            vec![
-                NonTerminal("Verb".to_string()),
-                NonTerminal("NP".to_string()),
-            ],
-        );
-        grammar.add_rule(
-            "VP".to_string(),
-            vec![NonTerminal("VP".to_string()), NonTerminal("PP".to_string())],
-        );
-        grammar.add_rule(
-            "PP".to_string(),
-            vec![
-                NonTerminal("Prep".to_string()),
-                NonTerminal("NP".to_string()),
-            ],
-        );
-        grammar.add_rule("Noun".to_string(), vec![Terminal(Token::John)]);
-        grammar.add_rule("Noun".to_string(), vec![Terminal(Token::Mary)]);
-        grammar.add_rule("Noun".to_string(), vec![Terminal(Token::Denver)]);
-        grammar.add_rule("Verb".to_string(), vec![Terminal(Token::Called)]);
-        grammar.add_rule("Prep".to_string(), vec![Terminal(Token::From)]);
+        grammar.add(TextRule::new("S").nt("NP").nt("VP"));
+        grammar.add(TextRule::new("NP").nt("NP").nt("PP"));
+        grammar.add(TextRule::new("NP").nt("Noun"));
+        grammar.add(TextRule::new("VP").nt("Verb").nt("NP"));
+        grammar.add(TextRule::new("VP").nt("VP").nt("PP"));
+        grammar.add(TextRule::new("PP").nt("Prep").nt("NP"));
+        grammar.add(TextRule::new("Noun").t(Token::John));
+        grammar.add(TextRule::new("Noun").t(Token::Mary));
+        grammar.add(TextRule::new("Noun").t(Token::Denver));
+        grammar.add(TextRule::new("Verb").t(Token::Called));
+        grammar.add(TextRule::new("Prep").t(Token::From));
 
         grammar
     }
@@ -940,7 +1083,8 @@ mod tests {
         let grammar = token_grammar();
         let compiled_grammar = grammar.compile().expect("compilation should have worked");
 
-        let mut parser = Parser::<Token, Token>::new(compiled_grammar);
+        let mut parser =
+            Parser::<Token, Token, DynamicGrammar<Token, Token>>::new(compiled_grammar);
         let mut position = 0;
         for (i, c) in [Token::John, Token::Called, Token::Mary, Token::From]
             .iter()
@@ -962,19 +1106,13 @@ mod tests {
                 CstIterItem::Parsed(i) => {
                     println!(
                         "iter: {}, {}-{}",
-                        parser
-                            .grammar
-                            .dotted_rule_to_string(&i.dotted_rule)
-                            .unwrap(),
+                        parser.dotted_rule_to_string(&i.dotted_rule).unwrap(),
                         i.start,
                         i.end
                     );
                     for n in i.path.0.iter() {
                         let dr = &parser.chart[n.position][n.state as usize].0;
-                        println!(
-                            "iter:   {}",
-                            parser.grammar.dotted_rule_to_string(&dr).unwrap()
-                        );
+                        println!("iter:   {}", parser.dotted_rule_to_string(&dr).unwrap());
                     }
                 }
                 _ => {
@@ -1012,7 +1150,8 @@ mod tests {
         let grammar = define_grammar();
         let compiled_grammar = grammar.compile().expect("compilation should have worked");
 
-        let mut parser = Parser::<char, CharMatcher>::new(compiled_grammar);
+        let mut parser =
+            Parser::<char, CharMatcher, DynamicGrammar<char, CharMatcher>>::new(compiled_grammar);
         let mut position = 0;
         for (i, c) in "john ".chars().enumerate() {
             let res = parser.update(i, c);
@@ -1049,7 +1188,8 @@ mod tests {
         let grammar = define_grammar();
         let compiled_grammar = grammar.compile().expect("compilation should have worked");
 
-        let mut parser = Parser::<char, CharMatcher>::new(compiled_grammar);
+        let mut parser =
+            Parser::<char, CharMatcher, DynamicGrammar<char, CharMatcher>>::new(compiled_grammar);
 
         // Start as "john called denver"
         for (i, c) in "john called denver".chars().enumerate() {
@@ -1079,24 +1219,18 @@ mod tests {
     /// maybe_b =
     #[test]
     fn empty() {
-        let mut grammar = Grammar::<char, CharMatcher>::new();
+        let mut grammar = TextGrammar::<char, CharMatcher>::new();
+        use super::super::grammar::TextRule;
         use CharMatcher::*;
-        use Symbol::*;
         grammar.set_start("S".to_string());
-        grammar.add_rule(
-            "S".to_string(),
-            vec![
-                Terminal(Exact('a')),
-                NonTerminal("maybe_b".to_string()),
-                Terminal(Exact('c')),
-            ],
-        );
-        grammar.add_rule("maybe_b".to_string(), vec![Terminal(Exact('b'))]);
-        grammar.add_rule("maybe_b".to_string(), vec![]);
+        grammar.add(TextRule::new("S").t(Exact('a')).nt("maybe_b").t(Exact('c')));
+        grammar.add(TextRule::new("maybe_b").t(Exact('b')));
+        grammar.add(TextRule::new("maybe_b"));
 
         let compiled_grammar = grammar.compile().expect("compilation should have worked");
 
-        let mut parser = Parser::<char, CharMatcher>::new(compiled_grammar);
+        let mut parser =
+            Parser::<char, CharMatcher, DynamicGrammar<char, CharMatcher>>::new(compiled_grammar);
 
         // "abc" should be acceptable
         {
@@ -1161,19 +1295,20 @@ mod tests {
     /// The graph is in `error.dot.png`.
     #[test]
     fn error() {
-        let mut grammar = Grammar::<char, CharMatcher>::new();
-        use super::super::grammar::Rule;
+        let mut grammar = TextGrammar::<char, CharMatcher>::new();
+        use super::super::grammar::TextRule;
         use CharMatcher::*;
         use Verdict::*;
         grammar.set_start("S".to_string());
-        grammar.add(Rule::new("S").nt("A").nt("B"));
-        grammar.add(Rule::new("A").t(Exact('a')).nt("A"));
-        grammar.add(Rule::new("A").t(Exact('a')));
-        grammar.add(Rule::new("B").t(Exact('b')));
-        grammar.add(Rule::new("B").t(Exact('c')));
+        grammar.add(TextRule::new("S").nt("A").nt("B"));
+        grammar.add(TextRule::new("A").t(Exact('a')).nt("A"));
+        grammar.add(TextRule::new("A").t(Exact('a')));
+        grammar.add(TextRule::new("B").t(Exact('b')));
+        grammar.add(TextRule::new("B").t(Exact('c')));
 
         let compiled_grammar = grammar.compile().expect("compilation should have worked");
-        let mut parser = Parser::<char, CharMatcher>::new(compiled_grammar);
+        let mut parser =
+            Parser::<char, CharMatcher, DynamicGrammar<char, CharMatcher>>::new(compiled_grammar);
 
         // "aab" should be accepted
         for (i, (c, v)) in [('a', More), ('a', More), ('b', Accept)].iter().enumerate() {
@@ -1255,26 +1390,27 @@ mod tests {
     /// The graph is in `mid_term.dot.png`.
     #[test]
     fn mid_term() {
-        let mut grammar = Grammar::<char, CharMatcher>::new();
-        use super::super::grammar::Rule;
+        let mut grammar = TextGrammar::<char, CharMatcher>::new();
+        use super::super::grammar::TextRule;
         use CharMatcher::*;
         use Verdict::*;
         grammar.set_start("S".to_string());
         grammar.add(
-            Rule::new("S")
+            TextRule::new("S")
                 .nt("id")
                 .nt("ws")
                 .t(Exact('='))
                 .nt("ws")
                 .nt("id"),
         );
-        grammar.add(Rule::new("id").t(Exact('a')).nt("id"));
-        grammar.add(Rule::new("id").t(Exact('a')));
-        grammar.add(Rule::new("ws").t(Exact(' ')).nt("ws"));
-        grammar.add(Rule::new("ws").t(Exact(' ')));
+        grammar.add(TextRule::new("id").t(Exact('a')).nt("id"));
+        grammar.add(TextRule::new("id").t(Exact('a')));
+        grammar.add(TextRule::new("ws").t(Exact(' ')).nt("ws"));
+        grammar.add(TextRule::new("ws").t(Exact(' ')));
 
         let compiled_grammar = grammar.compile().expect("compilation should have worked");
-        let mut parser = Parser::<char, CharMatcher>::new(compiled_grammar);
+        let mut parser =
+            Parser::<char, CharMatcher, DynamicGrammar<char, CharMatcher>>::new(compiled_grammar);
 
         // "aa = aa" should be accepted
         for (i, (c, v)) in [

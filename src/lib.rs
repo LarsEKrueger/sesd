@@ -51,16 +51,16 @@
 //! bigger examples.
 //!
 //! ```
-//! use sesd::{char::CharMatcher, Grammar, Parser, Rule, Verdict};
+//! use sesd::{char::CharMatcher, TextGrammar, DynamicGrammar, Parser, TextRule, Verdict};
 //!
 //! use CharMatcher::*;
-//! let mut grammar: Grammar<char, CharMatcher> = Grammar::new();
+//! let mut grammar: TextGrammar<char, CharMatcher> = TextGrammar::new();
 //!
 //! grammar.set_start("S".to_string());
 //! // S ::= Noun ' ' Noun
-//! grammar.add( Rule::new( "S").nt("Noun").t(Exact(' ')).nt("Noun"));
+//! grammar.add( TextRule::new( "S").nt("Noun").t(Exact(' ')).nt("Noun"));
 //! // Noun ::= 'j' 'o' 'h' 'n'
-//! grammar.add( Rule::new( "Noun").
+//! grammar.add( TextRule::new( "Noun").
 //!         t(Exact('j')).
 //!         t(Exact('o')).
 //!         t(Exact('h')).
@@ -68,7 +68,7 @@
 //!
 //! let compiled_grammar = grammar.compile().expect("compilation should have worked");
 //!
-//! let mut parser = Parser::<char, CharMatcher>::new(compiled_grammar);
+//! let mut parser = Parser::<char, CharMatcher, DynamicGrammar<char,CharMatcher>>::new(compiled_grammar);
 //! let mut position = 0;
 //! for (i, c) in "john joh".chars().enumerate() {
 //!     let res = parser.update(i, c);
@@ -82,6 +82,8 @@
 #[macro_use]
 extern crate log;
 
+use std::marker::PhantomData;
+
 mod buffer;
 pub mod char;
 mod grammar;
@@ -90,7 +92,8 @@ pub mod style_sheet;
 
 use buffer::Buffer;
 pub use grammar::{
-    CompiledGrammar, DottedRule, Error, Grammar, Matcher, Rule, Symbol, SymbolId, ERROR_ID,
+    CompiledGrammar, DynamicGrammar, Error, Matcher, SymbolId, TextGrammar, TextRule, TextSymbol,
+    ERROR_ID,
 };
 pub use parser::{CstIter, CstIterItem, CstIterItemNode, CstPath, Parser, Verdict};
 
@@ -101,26 +104,32 @@ pub use parser::{CstIter, CstIterItem, CstIterItemNode, CstPath, Parser, Verdict
 ///
 /// The grammar is not meant to be changed on the fly, but there is no technical limitations
 /// against that. File a feature request if you need it.
-pub struct SynchronousEditor<T, M>
+pub struct SynchronousEditor<T, M, G>
 where
     M: Matcher<T>,
+    G: CompiledGrammar<T, M>,
 {
     /// Token buffer
     buffer: Buffer<T>,
     /// Parser
-    parser: Parser<T, M>,
+    parser: Parser<T, M, G>,
+
+    /// Phantom data to make compiler happy
+    _marker: PhantomData<M>,
 }
 
-impl<T, M> SynchronousEditor<T, M>
+impl<T, M, G> SynchronousEditor<T, M, G>
 where
     T: Clone,
     M: Matcher<T> + Clone,
+    G: CompiledGrammar<T, M>,
 {
     /// Create a new parser with an empty buffer.
-    pub fn new(grammar: CompiledGrammar<T, M>) -> Self {
+    pub fn new(grammar: G) -> Self {
         Self {
             buffer: Buffer::new(),
             parser: Parser::new(grammar),
+            _marker: PhantomData,
         }
     }
 
@@ -183,7 +192,7 @@ where
     }
 
     /// Create a new iterator to traverse the parse tree in pre-order.
-    pub fn cst_iter(&self) -> CstIter<T, M> {
+    pub fn cst_iter(&self) -> CstIter<T, M, G> {
         self.parser.cst_iter()
     }
 
@@ -193,12 +202,12 @@ where
     }
 
     /// Borrow the parser for reading.
-    pub fn parser<'a>(&'a self) -> &Parser<T, M> {
+    pub fn parser<'a>(&'a self) -> &Parser<T, M, G> {
         &self.parser
     }
 
     /// Borrow the compiled grammar from inside the parser
-    pub fn grammar<'a>(&'a self) -> &CompiledGrammar<T, M> {
+    pub fn grammar<'a>(&'a self) -> &G {
         self.parser.grammar()
     }
 
@@ -284,9 +293,10 @@ where
     }
 }
 
-impl<M> SynchronousEditor<char, M>
+impl<M, G> SynchronousEditor<char, M, G>
 where
     M: Matcher<char>,
+    G: CompiledGrammar<char, M>,
 {
     /// For an editor holding tokens of type `char`s, return a string of the tokens beginning at
     /// position `start` and including the token before at position `end`.
