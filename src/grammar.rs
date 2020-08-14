@@ -538,56 +538,6 @@ where
     }
 }
 
-//   impl<T, M> CompiledGrammar<T, M>
-//   where
-//       M: Matcher<T> + Clone,
-//   {
-//       /// Check if rule with index `i` has the start symbol as lhs symbol.
-//       pub fn is_start_rule(&self, i: usize) -> bool {
-//           self.rules[i].0 == self.start
-//       }
-//
-//       /// Check if the given symbol is the start symbol.
-//       pub fn is_start_symbol(&self, sym: SymbolId) -> bool {
-//           self.start == sym
-//       }
-//
-//       /// Check if the rule with index `i` as the given symbol as lhs.
-//       pub fn lhs_is(&self, i: usize, sym: SymbolId) -> bool {
-//           self.rules[i].0 == sym
-//       }
-//
-//       /// Return true if dotted rule indicates a completely parsed start symbol, i.e. a successful
-//       /// parse.
-//       pub fn dotted_is_completed_start(&self, dotted_rule: &DottedRule) -> bool {
-//           let rule_index = dotted_rule.rule as usize;
-//           self.dotted_is_completed(dotted_rule) && self.is_start_rule(rule_index)
-//       }
-//
-//       /// Return true if dotted rule indicates a completely parsed symbol
-//       pub fn dotted_is_completed(&self, dotted_rule: &DottedRule) -> bool {
-//           let rule_index = dotted_rule.rule as usize;
-//           let dot_index = dotted_rule.dot as usize;
-//           let rule = &self.rules[rule_index];
-//           dot_index >= rule.1.len()
-//       }
-//
-//       /// Convert a list of non-terminal names to SymbolIds.
-//       ///
-//       /// Unknown names are returned as MAX_SYMBOL_ID.
-//       ///
-//       /// This function is slow and should not be used for mass queries.
-//       pub fn nt_ids(&self, names: &[&str]) -> Vec<SymbolId> {
-//           names.iter().map(|n| self.nt_id(n)).collect()
-//       }
-//
-//       /// Check if the non-terminal symbol has empty rules
-//       pub fn nt_with_empty_rule(&self, sym: SymbolId) -> bool {
-//           sym < self.empty_rules
-//       }
-//   }
-//
-
 #[cfg(test)]
 pub mod tests {
     use super::super::char::CharMatcher;
