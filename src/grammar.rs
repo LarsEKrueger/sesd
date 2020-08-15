@@ -289,17 +289,17 @@ macro_rules! grammar {
         }
     };
 
-    ( $mod:ident, {$($prefix:tt)*}, $token:ty, $matcher:ty, $start:ident, $nte:tt, $nts:tt, $terms:tt, $rules:tt) => { mod $mod {
-        use $crate::SymbolId;
+    (@generate {$($prefix:tt)*}, $token:ty, $matcher:ty, $start:ident, $nte:tt, $nts:tt, $terms:tt, $rules:tt) => {
+        use $crate::{SymbolId,ERROR_ID};
         $($prefix)*
 
-        grammar!{@empty_nt $nte, 1, $nts, $terms}
+        grammar!{@empty_nt $nte, 1u16, $nts, $terms, NUMBER_OF_EMPTY_NTS}
 
         grammar!{@nt_array $nte, $nts, NT_NAMES}
 
-        grammar!{@termtab $terms, 0, $matcher, TERMINALS, []}
+        grammar!{@termtab $terms, 0u16, $matcher, TERMINALS, []}
 
-        grammar!{@rules $rules, 0, RULES, []}
+        grammar!{@rules $rules, 1u16, RULES, [(ERROR_ID, &[]),]}
 
         pub struct Grammar { }
 
@@ -308,9 +308,16 @@ macro_rules! grammar {
         }
 
         grammar!{@impl $token, $matcher, $start, RULES, NT_NAMES, TERMINALS, NUMBER_OF_EMPTY_NTS}
+    };
 
-    }
-    }
+    (pub $mod:ident, $prefix:tt, $token:ty, $matcher:ty, $start:ident, $nte:tt, $nts:tt, $terms:tt, $rules:tt) => { pub mod $mod {
+        grammar!{@generate $prefix,$token,$matcher,$start,$nte,$nts,$terms,$rules}
+    }};
+
+    ( $mod:ident, $prefix:tt, $token:ty, $matcher:ty, $start:ident, $nte:tt, $nts:tt, $terms:tt, $rules:tt) => { mod $mod {
+        grammar!{@generate $prefix,$token,$matcher,$start,$nte,$nts,$terms,$rules}
+    }};
+
 }
 
 #[cfg(test)]
