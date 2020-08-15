@@ -169,20 +169,20 @@ where
 macro_rules! grammar {
 
     // NTs with empty rules
-    (@empty_nt [], $idx:expr, $nts:tt, $terms:tt) => {
-        pub const NUMBER_OF_EMPTY_NTS : SymbolId = $idx;
+    (@empty_nt [], $idx:expr, $nts:tt, $terms:tt, $const_num:ident) => {
+        pub const $const_num : SymbolId = $idx;
         grammar!{@nt $nts, $idx, $terms}
     };
 
-    (@empty_nt [$nt:ident], $idx:expr, $nts:tt, $terms:tt ) => {
+    (@empty_nt [$nt:ident], $idx:expr, $nts:tt, $terms:tt, $const_num:ident ) => {
         pub const $nt : SymbolId = $idx;
-        pub const NUMBER_OF_EMPTY_NTS : SymbolId = $idx+1;
-        grammar!{ @nt $nts, $idx+1, $terms}
+        pub const $const_num : SymbolId = $idx+1u16;
+        grammar!{@nt $nts, $idx+1u16, $terms}
     };
 
-    (@empty_nt [$nt:ident,$($rest:tt)*], $idx:expr, $nts:tt, $terms:tt ) => {
+    (@empty_nt [$nt:ident, $($rest:tt)*], $idx:expr, $nts:tt, $terms:tt, $const_num:ident ) => {
         pub const $nt : SymbolId = $idx;
-        grammar!{ @empty_nt [$($rest),*], $idx + 1, $nts, $terms}
+        grammar!{@empty_nt [$($rest)*], $idx+1u16, $nts, $terms, $const_num}
     };
 
     // NTs without empty rules
@@ -192,12 +192,12 @@ macro_rules! grammar {
 
     (@nt [$nt:ident], $idx:expr, $terms:tt ) => {
         pub const $nt : SymbolId = $idx;
-        grammar!{@term $terms, $idx+1}
+        grammar!{@term $terms, $idx+1u16}
     };
 
     (@nt [$nt:ident,$($nts:tt)*], $idx:expr, $terms:tt ) => {
         pub const $nt : SymbolId = $idx;
-        grammar!{ @nt [$($nts),*], $idx + 1, $terms}
+        grammar!{ @nt [$($nts)*], $idx+1u16, $terms}
     };
 
     // Terminal Ids
@@ -207,7 +207,7 @@ macro_rules! grammar {
 
     (@term [$term:ident = $match:expr, $($terms:tt)*], $idx:expr) => {
         pub const $term : SymbolId = $idx;
-        grammar!{@term [$($terms)*], $idx+1}
+        grammar!{@term [$($terms)*], $idx+1u16}
     };
 
     // NT names
@@ -215,37 +215,37 @@ macro_rules! grammar {
         grammar!{@nt_names $nts, $const_names, $idx, $names}
     };
     (@nte_names [$nte:ident], $nts:tt, $const_names:ident, $idx:expr, [$($names:tt)*]) => {
-        grammar!{@nt_names $nts, $const_names, $idx+1 , [$($names)*,stringify!($nte)]}
+        grammar!{@nt_names $nts, $const_names, $idx+1u16 , [$($names)*,stringify!($nte)]}
     };
     (@nte_names [$nte:ident,$($rest:tt)*], $nts:tt, $const_names:ident, $idx:expr, [$($names:tt)*]) => {
         grammar!{@nte_names [$($rest)*], $nts, $const_names, $idx+1u16, [$($names)*,stringify!($nte)]}
     };
 
     (@nt_names [$nt:ident], $const_names:ident, $idx:expr, [$($names:tt)*]) => {
-        const $const_names : [&str;$idx+1] = [$($names)*,stringify!($nt)];
+        const $const_names : [&str;($idx+1u16) as usize] = [$($names)*,stringify!($nt)];
     };
     (@nt_names [$nt:ident,$($nts:tt)*], $const_names:ident, $idx:expr, [$($names:tt)*]) => {
         grammar!{@nt_names [$($nts)*], $const_names, $idx+1, [$($names)*,stringify!($nt)]}
     };
 
     (@nt_array $nte:tt, $nts:tt, $const_names:ident) => {
-        grammar!{@nte_names $nte, $nts, $const_names, 1, ["~~~ERROR~~~"]}
+        grammar!{@nte_names $nte, $nts, $const_names, 1u16, ["~~~ERROR~~~"]}
     };
 
     // Terminal table
     (@termtab [$term:ident = $match:expr], $idx:expr, $matcher:ty, $const_terms:ident, [$($terms:tt)*]) => {
-        const $const_terms: [$matcher;$idx+1] = [ $($terms)* $match ];
+        const $const_terms: [$matcher;($idx+1u16) as usize] = [ $($terms)* $match ];
     };
     (@termtab [$term:ident = $match:expr, $($rest:tt)*], $idx:expr, $matcher:ty, $const_terms:ident, [$($terms:tt)*]) => {
-        grammar!{ @termtab [$($rest)*], $idx+1, $matcher, $const_terms, [$($terms)* $match, ]}
+        grammar!{ @termtab [$($rest)*], $idx+1u16, $matcher, $const_terms, [$($terms)* $match, ]}
     };
 
     // Rules
     (@rules [$lhs:ident = $($rhs:ident)*], $idx:expr, $const_rules:ident, [$($rules:tt)*]) => {
-        const $const_rules: [(SymbolId, &[SymbolId]);$idx+1] = [$($rules)* ($lhs, &[ $($rhs),* ])];
+        const $const_rules: [(SymbolId, &[SymbolId]);($idx+1u16) as usize] = [$($rules)* ($lhs, &[ $($rhs),* ])];
     };
     (@rules [$lhs:ident = $($rhs:ident)*, $($rest:tt)*], $idx:expr, $const_rules:ident, [$($rules:tt)*]) => {
-        grammar!{@rules [$($rest)*], $idx+1, $const_rules, [$($rules)* ($lhs, &[ $($rhs),* ]),]}
+        grammar!{@rules [$($rest)*], $idx+1u16, $const_rules, [$($rules)* ($lhs, &[ $($rhs),* ]),]}
     };
 
     // Trait implementation
@@ -256,15 +256,15 @@ macro_rules! grammar {
             }
 
             fn rules_count(&self) -> usize {
-                RULES.len()
+                $const_rules.len()
             }
 
             fn lhs(&self, rule: usize) -> SymbolId {
-                RULES[rule].0
+                $const_rules[rule].0
             }
 
             fn rhs(&self, rule: usize) -> &[SymbolId] {
-                RULES[rule].1
+                $const_rules[rule].1
             }
 
             fn nt_name(&self, nt: SymbolId) -> &str {
@@ -280,7 +280,7 @@ macro_rules! grammar {
             }
 
             fn nt_empty_count(&self) -> SymbolId {
-                NUMBER_OF_EMPTY_NTS
+                $const_num
             }
 
             fn matcher(&self, term: SymbolId) -> $matcher {
@@ -328,50 +328,57 @@ pub mod tests {
     fn sentence_grammar() {
         // Test grammar
         //
-        // S = A B
+        // S = A B C
         // A = Range('a','z')
         // A =
         // B = Exact('b')
+        // B =
+        // C = Exact('c')
         grammar! {g1,
         {
             use crate::char::CharMatcher::*;
         },
         char,crate::char::CharMatcher,
         S,
-        [A],
-        [S,B],
+        [A,B],
+        [S,C],
         [
             T_A = Range('a','z'),
-            T_B = Exact('b')
+            T_B = Exact('b'),
+            T_C = Exact('c')
         ],
         [
-            S = A B,
+            S = A B C,
             A = T_A,
-            B = T_B
+            B = T_B,
+            C = T_C
         ]}
 
         let grammar = g1::grammar();
         assert_eq!(g1::A, 1);
-        assert_eq!(g1::NUMBER_OF_EMPTY_NTS, 2);
-        assert_eq!(g1::S, 2);
-        assert_eq!(g1::B, 3);
-        assert_eq!(g1::T_A, 4);
-        assert_eq!(g1::T_B, 5);
+        assert_eq!(g1::B, 2);
+        assert_eq!(g1::NUMBER_OF_EMPTY_NTS, 3);
+        assert_eq!(g1::S, 3);
+        assert_eq!(g1::C, 4);
+        assert_eq!(g1::T_A, 5);
+        assert_eq!(g1::T_B, 6);
+        assert_eq!(g1::T_C, 7);
 
         assert_eq!(grammar.nt_name(0), "~~~ERROR~~~");
-        assert_eq!(grammar.nt_name(1), "A");
-        assert_eq!(grammar.nt_name(2), "S");
-        assert_eq!(grammar.nt_name(3), "B");
+        assert_eq!(grammar.nt_name(g1::A), "A");
+        assert_eq!(grammar.nt_name(g1::B), "B");
+        assert_eq!(grammar.nt_name(g1::C), "C");
+        assert_eq!(grammar.nt_name(g1::S), "S");
 
         use crate::Parser;
         use crate::Verdict::*;
         let mut parser = Parser::<char, crate::char::CharMatcher, g1::Grammar>::new(grammar);
-        for (i, (c, v)) in [('a', More), ('b', Accept)].iter().enumerate() {
+        for (i, (c, v)) in [('a', More), ('b', More), ('c', Accept)].iter().enumerate() {
             let res = parser.update(i, *c);
             parser.print_chart();
             assert_eq!(res, *v);
         }
-        for (i, (c, v)) in [('b', Accept)].iter().enumerate() {
+        for (i, (c, v)) in [('c', Accept)].iter().enumerate() {
             let res = parser.update(i, *c);
             assert_eq!(res, *v);
         }
