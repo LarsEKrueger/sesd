@@ -50,7 +50,6 @@ extern crate sesd;
 use sesd::{char::CharMatcher, CompiledGrammar, CstIterItem, SymbolId, SynchronousEditor};
 
 mod cargo_toml;
-mod cargo_toml2;
 mod look_and_feel;
 use look_and_feel::{LookAndFeel, LookedUp, Style};
 
@@ -62,7 +61,7 @@ struct CommandLine {
     input: PathBuf,
 }
 
-type Editor = SynchronousEditor<char, CharMatcher, cargo_toml2::cargo_toml::Grammar>;
+type Editor = SynchronousEditor<char, CharMatcher, cargo_toml::cargo_toml::Grammar>;
 
 /// Syntactical element to be displayed
 struct SynElement {
@@ -765,8 +764,8 @@ fn main() {
 
     let cmd_line = CommandLine::from_args();
     debug!("{:?}", cmd_line);
-    let grammar = cargo_toml2::cargo_toml::grammar();
-    let look_and_feel = cargo_toml2::look_and_feel();
+    let grammar = cargo_toml::cargo_toml::grammar();
+    let look_and_feel = cargo_toml::look_and_feel();
 
     // Set the locale so that UTF-8 codepoints appear correctly
     unsafe { libc::setlocale(libc::LC_ALL, NUL_BYTE_ARRAY[..].as_ptr()) };
