@@ -131,11 +131,11 @@ features that implement them.
 
 # TODO
 
-* [ ] Consistent and unambigous names for the various types of indices.
 * [ ] BUG: Wrapping long lines doesn't work correctly.
-* [ ] Compile grammar tables using macros (no dynamic memory)
 * [ ] Join style sheet and parser
 * [ ] Reduce number of allocations
+* [X] Consistent and unambigous names for the various types of indices.
+* [X] Compile grammar tables using macros (no dynamic memory)
 
 # LICENSE issues
 
