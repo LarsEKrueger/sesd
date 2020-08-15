@@ -306,7 +306,10 @@ impl App {
 
             Input::KeyF2 => {
                 self.error = match self.save_file() {
-                    Ok(_) => format!("Successfully saved »{}«.", self.filename.to_string_lossy()),
+                    Ok(_) => format!(
+                        "Successfully saved »{}«.",
+                        self.filename.to_string_lossy()
+                    ),
                     Err(msg) => format!(
                         "Error saving file »{}«: {}",
                         self.filename.to_string_lossy(),

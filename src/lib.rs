@@ -86,15 +86,14 @@ use std::marker::PhantomData;
 
 mod buffer;
 pub mod char;
+mod dynamic_grammar;
 mod grammar;
 mod parser;
 pub mod style_sheet;
 
 use buffer::Buffer;
-pub use grammar::{
-    CompiledGrammar, DynamicGrammar, Error, Matcher, SymbolId, TextGrammar, TextRule, TextSymbol,
-    ERROR_ID,
-};
+pub use dynamic_grammar::{DynamicGrammar, Error, TextGrammar, TextRule, TextSymbol};
+pub use grammar::{CompiledGrammar, Matcher, SymbolId, ERROR_ID};
 pub use parser::{CstIter, CstIterItem, CstIterItemNode, CstPath, Parser, Verdict};
 
 /// Editor with synchronous parsing.

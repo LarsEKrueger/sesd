@@ -964,8 +964,8 @@ mod tests {
     use super::*;
 
     use super::super::char::CharMatcher;
-    use super::super::grammar::tests::define_grammar;
-    use super::super::grammar::{DynamicGrammar, TextGrammar};
+    use crate::dynamic_grammar::tests::define_grammar;
+    use crate::dynamic_grammar::{DynamicGrammar, TextGrammar};
 
     /// Define the grammar from: https://www.cs.unm.edu/~luger/ai-final2/CH9_Dynamic%20Programming%20and%20the%20Earley%20Parser.pdf
     ///
@@ -1052,7 +1052,7 @@ mod tests {
     pub fn token_grammar() -> TextGrammar<Token, Token> {
         let mut grammar: TextGrammar<Token, Token> = TextGrammar::new();
 
-        use super::super::grammar::TextRule;
+        use crate::dynamic_grammar::TextRule;
         grammar.set_start("S".to_string());
         grammar.add(TextRule::new("S").nt("NP").nt("VP"));
         grammar.add(TextRule::new("NP").nt("NP").nt("PP"));
@@ -1220,7 +1220,7 @@ mod tests {
     #[test]
     fn empty() {
         let mut grammar = TextGrammar::<char, CharMatcher>::new();
-        use super::super::grammar::TextRule;
+        use crate::dynamic_grammar::TextRule;
         use CharMatcher::*;
         grammar.set_start("S".to_string());
         grammar.add(TextRule::new("S").t(Exact('a')).nt("maybe_b").t(Exact('c')));
@@ -1296,7 +1296,7 @@ mod tests {
     #[test]
     fn error() {
         let mut grammar = TextGrammar::<char, CharMatcher>::new();
-        use super::super::grammar::TextRule;
+        use crate::dynamic_grammar::TextRule;
         use CharMatcher::*;
         use Verdict::*;
         grammar.set_start("S".to_string());
@@ -1391,7 +1391,7 @@ mod tests {
     #[test]
     fn mid_term() {
         let mut grammar = TextGrammar::<char, CharMatcher>::new();
-        use super::super::grammar::TextRule;
+        use crate::dynamic_grammar::TextRule;
         use CharMatcher::*;
         use Verdict::*;
         grammar.set_start("S".to_string());
