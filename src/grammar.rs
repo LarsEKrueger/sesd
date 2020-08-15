@@ -101,6 +101,70 @@ where
     fn matcher(&self, term: SymbolId) -> M;
 }
 
+/// Define a grammar at compile time.
+///
+/// The parameters are:
+/// ```ignore
+/// grammar!{
+///   // Define the name of the mod in which the grammar is enclosed.
+///   module_name,
+///   // Make the Matcher variants available inside the grammar. Any definitions made in this
+///   // section will not be visible outside the grammar.
+///   //
+///   // The braces are mandatory.
+///   {
+///     use any::symbols::you::need::*;
+///   },
+///   TokenType,
+///   MatcherType,
+///   START_SYMBOL,
+///   [
+///     NONTERMINAL_EMPTY_1,
+///     NONTERMINAL_EMPTY_2
+///   ],
+///   [
+///     NONTERMINAL_NONEMPTY_1,
+///     NONTERMINAL_NONEMPTY_2,
+///     START_SYMBOL
+///   ],
+///   [
+///       TERMINAL_1 = MatcherType::Enum1( CONSTANT),
+///       TERMINAL_2 = MatcherType::Enum2
+///   ],
+///   // List of rules. Non-terminals and matchers can be mixed freely.
+///   [
+///       START_SYMBOL = NONTERMINAL_EMPTY_1 TERMINAL_1 NONTERMINAL_NONEMPTY_1,
+///       START_SYMBOL = NONTERMINAL_EMPTY_2 TERMINAL_2 NONTERMINAL_NONEMPTY_2
+///   ]
+/// }
+/// ```
+///
+/// This will compile to the following code. Private definitions have been left out for brevity.
+///
+/// ```ignore
+/// mod module_name {
+///   use sesd::SymbolId;
+///   use any::symbols::you::need::*;
+///
+///   pub const NONTERMINAL_EMPTY_1 : SymbolId = 1;
+///   pub const NONTERMINAL_EMPTY_2 : SymbolId = 2;
+///   pub const NONTERMINAL_NONEMPTY_1 : SymbolId = 3;
+///   pub const NONTERMINAL_NONEMPTY_2 : SymbolId = 4;
+///   pub const START_SYMBOL : SymbolId = 5;
+///   pub const TERMINAL_1 : SymbolId = 6;
+///   pub const TERMINAL_2 : SymbolId = 7;
+///
+///   pub struct Grammar {}
+///
+///   pub fn grammar() -> Grammar {
+///       Grammar {}
+///   }
+///
+///   impl CompiledGrammar<TokenType, MatcherType> for Grammar {
+///     ...
+///   }
+/// }
+/// ```
 #[macro_export]
 macro_rules! grammar {
 

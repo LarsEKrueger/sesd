@@ -31,8 +31,8 @@
 //! editor buffer is a vector holding tokens of an arbitrary type. The tokens have very few
 //! requirements regarding the traits they need to implement, primarily `Clone` and `PartialEq`.
 //!
-//! The parser can rebuild its parsing chart on the fly, even partially. This allows it to be in
-//! interactive applications. At the moment, only the synchronous reparsing is implemented (i.e.
+//! The parser can rebuild its parsing chart on the fly, even partially. This allows it to be used
+//! in interactive applications. At the moment, only the synchronous reparsing is implemented (i.e.
 //! reparsing after each change of the input buffer).
 //!
 //! The parser generates a [Concrete Syntax Tree](https://en.wikipedia.org/wiki/Parse_tree)
@@ -40,15 +40,135 @@
 //! accepted by the parser. The Earley Parser has been selected because it predicts which terminal
 //! and non-terminal symbols can come next for a successful parse.
 //!
-//! The error handling uses that property to recover from incorrect terminal by marking the chart
+//! The error handling uses that property to recover from incorrect terminals by marking the chart
 //! entries for the incorrect token position as erroneous and then pretend that all possible
-//! non-terminals matched. This, together with the handling of ambiguous grammar, will eventually
+//! non-terminals matched. This, together with the handling of ambiguous grammars, will eventually
 //! find a position from which the parse can be continued until acceptance.
+//!
+//! Grammars are be defined by types that implement the `CompiledGrammar` trait. Currently, there
+//! are two ways: at compile time using the [`grammar!` macro](macro.grammar.html) and at run time using the
+//! [`DynamicGrammar` struct](struct.DynamicGrammar.html).
+//!
+//! There is a distinction between tokens and token matchers in the parser. Tokens are passed to
+//! the parser, who asks the token matchers if they accept this token. In the simplest case token
+//! and matcher are of the same type. The default implementation will check for identity to accept
+//! a token. For `char` tokens, a matcher is provided that accepts exact matches and character from
+//! ranges. This will simplify the implementation of the most common case.
 //!
 //! # Examples
 //!
-//! The following example uses a very simple grammar due to size. Check the unit tests for
+//! The following examples uses a very simple grammar due to size. Check the unit tests for
 //! bigger examples.
+//!
+//! Both examples implement the grammar
+//!
+//! ```text
+//! S := NOUN ' ' NOUN
+//!
+//! NOUN := 'j' 'o' 'h' 'n'
+//!      |
+//! ```
+//!
+//! using `char` for tokens and `char::CharMatcher` for matchers.
+//!
+//! This grammar accepts the strings
+//! ```text
+//!   " "
+//!   "john "
+//!   " john"
+//!   "john john"
+//! ```
+//!
+//! If your project only requires a few grammars, it is most efficient to define them at compile
+//! time, like this:
+//!
+//! ```
+//! #[macro_use] extern crate sesd;
+//!
+//! grammar!{
+//!   // Define the name of the mod in which the grammar is enclosed.
+//!   example1,
+//!   // Make the Matcher variants available inside the grammar. Any definitions made in this
+//!   // section will not be visible outside the grammar.
+//!   //
+//!   // The braces are mandatory.
+//!   {
+//!     use sesd::char::CharMatcher::*;
+//!   },
+//!   // Type of the tokens
+//!   char,
+//!   // Type of the token matcher
+//!   sesd::char::CharMatcher,
+//!   // Name of start symbol. Must be a valid identifier for a constant.
+//!   //
+//!   // The start symbol needs to be declared below as either empty or non-empty.
+//!   S,
+//!   // List of non-terminals that match the empty set.
+//!   //
+//!   // The constants associated with the symbols are public.
+//!   //
+//!   // Empty rules for non-terminals do not need to be added in the rules below.
+//!   [NOUN],
+//!   // List of all non-terminals that do not match the empty set.
+//!   //
+//!   // Even if you add a rule to match the empty set, but list the symbol in the following list,
+//!   // the empty rule will be ignored.
+//!   //
+//!   // The constants associated with the symbols are public.
+//!   [S],
+//!   // List of matchers. Each matcher must be given a symbol and constant value.
+//!   //
+//!   // The empty rule for NOUN has been left out because NOUN has been declared as empty rule
+//!   // before.
+//!   [
+//!       T_J = Exact('j'),
+//!       T_O = Exact('o'),
+//!       T_H = Exact('h'),
+//!       T_N = Exact('n'),
+//!       T_SPACE = Exact(' ')
+//!   ],
+//!   // List of rules. Non-terminals and matchers can be mixed freely.
+//!   [
+//!       S = NOUN T_SPACE NOUN,
+//!       NOUN = T_J T_O T_H T_N
+//!   ]
+//! }
+//!
+//! // Create an instance of the grammar. For compile-time grammars, it allocates nothing.
+//! let grammar = example1::grammar();
+//!
+//! // Instantiate a parser
+//! use sesd::Parser;
+//! use sesd::Verdict::*;
+//! let mut parser = Parser::<char, sesd::char::CharMatcher, example1::Grammar>::new(grammar);
+//!
+//! // Parse 'john john'
+//! for (i, (c, v)) in [
+//!    ('j', More),
+//!    ('o', More),
+//!    ('h', More),
+//!    ('n', More),
+//!    // This token is accepted as a complete parse due to the empty rule.
+//!    // In practice, you'd need to check the CST to identify which case has caused this acceptance.
+//!    (' ', Accept),
+//!    ('j', More),
+//!    ('o', More),
+//!    ('h', More),
+//!    ('n', Accept),
+//!    ].iter().enumerate() {
+//!     let res = parser.update(i, *c);
+//!     assert_eq!(res, *v);
+//! }
+//! // Print the parse chart at the end. Inspect it to learn how an Earley parser works.
+//! parser.print_chart();
+//! ```
+//!
+//! If your project deals with user-defined grammars, or you need to make the grammar configurable,
+//! the following example will illustrate the process. For ease of use, the definition of the
+//! grammar is done by representing the non-terminals as strings. Identical strings refer to the
+//! same non-terminal. When the textual representation of the grammar has been built, it needs to
+//! be compiled to a more efficient representation, an instance of `DynamicGrammar`. This can be
+//! used to constuct a parser as before.
 //!
 //! ```
 //! use sesd::{char::CharMatcher, TextGrammar, DynamicGrammar, Parser, TextRule, Verdict};
@@ -65,18 +185,40 @@
 //!         t(Exact('o')).
 //!         t(Exact('h')).
 //!         t(Exact('n')));
+//! // Noun ::=
+//! // In contrast to before, the empty rule needs to be added.
+//! grammar.add( TextRule::new( "Noun"));
 //!
+//! // Compile the textual representation to a machine-readable format. In practice, the error
+//! // needs to be handled correctly.
 //! let compiled_grammar = grammar.compile().expect("compilation should have worked");
 //!
+//! // Construct the parser.
+//! use sesd::Verdict::*;
 //! let mut parser = Parser::<char, CharMatcher, DynamicGrammar<char,CharMatcher>>::new(compiled_grammar);
-//! let mut position = 0;
-//! for (i, c) in "john joh".chars().enumerate() {
-//!     let res = parser.update(i, c);
-//!     assert_eq!(res, Verdict::More);
-//!     position = i;
+//!
+//! // Parse 'john john'
+//! for (i, (c, v)) in [
+//!    ('j', More),
+//!    ('o', More),
+//!    ('h', More),
+//!    ('n', More),
+//!    // This token is accepted as a complete parse due to the empty rule.
+//!    // In practice, you'd need to check the CST to identify which case has caused this acceptance.
+//!    (' ', Accept),
+//!    ('j', More),
+//!    ('o', More),
+//!    ('h', More),
+//!    ('n', Accept),
+//!    ].iter().enumerate() {
+//!     let res = parser.update(i, *c);
+//!     assert_eq!(res, *v);
 //! }
-//! let res = parser.update(position+1, 'n');
-//! assert_eq!(res, Verdict::Accept);
+//! // Print the parse chart at the end. Inspect it to learn how an Earley parser works. You will
+//! // see the empty rules being predicted, but never matched. This is considered an inefficiency,
+//! // not a bug.
+//! parser.print_chart();
+//!
 //! ```
 
 #[macro_use]
