@@ -186,7 +186,7 @@ macro_rules! grammar {
 
     // Trait implementation
     (@impl $token:ty, $matcher:ty, $start:ident, $const_rules:ident, $const_names:ident, $const_terms:ident, $const_num:ident) => {
-        impl $crate::grammar::CompiledGrammar<$token, $matcher> for Grammar {
+        impl $crate::CompiledGrammar<$token, $matcher> for Grammar {
             fn start_symbol(&self) -> SymbolId {
                 $start
             }
