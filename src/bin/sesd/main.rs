@@ -22,6 +22,8 @@
     SOFTWARE.
 */
 
+#![recursion_limit = "256"]
+
 #[macro_use]
 extern crate log;
 extern crate flexi_logger;
@@ -42,9 +44,10 @@ use std::path::PathBuf;
 use pancurses::{endwin, initscr, noecho, Input, Window};
 use structopt::StructOpt;
 
-use sesd::{
-    char::CharMatcher, CompiledGrammar, CstIterItem, DynamicGrammar, SymbolId, SynchronousEditor,
-};
+#[macro_use]
+extern crate sesd;
+
+use sesd::{char::CharMatcher, CompiledGrammar, CstIterItem, SymbolId, SynchronousEditor};
 
 mod cargo_toml;
 mod cargo_toml2;
@@ -59,7 +62,6 @@ struct CommandLine {
     input: PathBuf,
 }
 
-// type Editor = SynchronousEditor<char, CharMatcher, DynamicGrammar<char, CharMatcher>>;
 type Editor = SynchronousEditor<char, CharMatcher, cargo_toml2::cargo_toml::Grammar>;
 
 /// Syntactical element to be displayed
@@ -763,11 +765,8 @@ fn main() {
 
     let cmd_line = CommandLine::from_args();
     debug!("{:?}", cmd_line);
-    let grammar = cargo_toml2::grammar();
+    let grammar = cargo_toml2::cargo_toml::grammar();
     let look_and_feel = cargo_toml2::look_and_feel();
-
-    // let grammar = cargo_toml::grammar();
-    // let look_and_feel = cargo_toml::look_and_feel(&grammar);
 
     // Set the locale so that UTF-8 codepoints appear correctly
     unsafe { libc::setlocale(libc::LC_ALL, NUL_BYTE_ARRAY[..].as_ptr()) };
