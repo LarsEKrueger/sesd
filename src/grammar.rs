@@ -218,7 +218,7 @@ macro_rules! grammar {
         grammar!{@nt_names $nts, $const_names, $idx+1 , [$($names)*,stringify!($nte)]}
     };
     (@nte_names [$nte:ident,$($rest:tt)*], $nts:tt, $const_names:ident, $idx:expr, [$($names:tt)*]) => {
-        grammar!{@nte_names [$($rest)*], $nts, [$($names)*,stringify!($nte)]}
+        grammar!{@nte_names [$($rest)*], $nts, $const_names, $idx+1u16, [$($names)*,stringify!($nte)]}
     };
 
     (@nt_names [$nt:ident], $const_names:ident, $idx:expr, [$($names:tt)*]) => {
