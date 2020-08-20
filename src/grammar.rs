@@ -165,6 +165,40 @@ where
 ///   }
 /// }
 /// ```
+///
+/// # Debugging hints
+///
+/// If you get any errors during the compilation of a grammar, this section will help you
+/// pinpointing the cause.
+///
+/// ## `Cannot find value 'XXX' in this scope` in the rules
+///
+/// You forgot to declare `XXX` as a terminal or non-terminal. The compiler will indicate the
+/// correct position where the undeclared symbol has been used.
+///
+/// Add it to the appropriate declaration list.
+///
+/// ## `no rules expected this token in macro call`
+///
+/// You made a syntax error in one of the lists. The compiler is sometimes able to indicate the
+/// position of the error. Fix those errors from top to bottom. This might also resolve later
+/// errors.
+///
+/// If the compiler indicates the error to be inside the macro, i.e. the offending line starts with
+/// `grammar!{@`, go through the following checklist:
+///
+/// * There must be no comma after the last non-empty non-terminal. Offening line starts with `grammar!{@nt_names`.
+/// * There must be no comma after the last terminal. Offening line starts with `grammar!{@term`.
+///
+/// ## Using the nightly toolchain
+///
+/// If you have the [*nightly* toolchain](https://doc.rust-lang.org/nightly/edition-guide/rust-2018/rustup-for-managing-rust-versions.html) installed, you can run
+///
+/// ```bash
+///    rustup run nightly cargo  rustc --lib -- -Z debug-macros=yes
+/// ```
+///
+/// This will usually provide you with the error position directly.
 #[macro_export]
 macro_rules! grammar {
 
@@ -383,5 +417,4 @@ pub mod tests {
             assert_eq!(res, *v);
         }
     }
-
 }
