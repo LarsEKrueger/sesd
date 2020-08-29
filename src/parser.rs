@@ -859,6 +859,7 @@ where
 
 impl<T, M, G> Parser<T, M, G>
 where
+    T: Clone,
     M: Matcher<T> + Clone + PartialEq + std::fmt::Debug,
     G: CompiledGrammar<T, M>,
 {
@@ -948,6 +949,51 @@ where
                     self.dotted_rule_to_string(&e.0).unwrap(),
                     e.1
                 );
+            }
+        }
+    }
+
+    pub fn trace_cst(&self, position: usize) {
+        if position > self.valid_entries {
+            return;
+        }
+
+        // Collect all the entries at the position
+        let mut stack = Vec::new();
+
+        trace!("trace_cst start");
+        for rule_index in 0..self.chart[position].len() {
+            {
+                let e = &self.chart[position][rule_index];
+                trace!("{}. [{}]", self.dotted_rule_to_string(&e.0).unwrap(), e.1);
+            }
+            stack.push((
+                CstPathNode {
+                    position,
+                    state: rule_index as SymbolId,
+                },
+                false,
+            ));
+        }
+
+        trace!("trace_cst items");
+        let cst_iter = CstIter {
+            parser: &self,
+            stack,
+            unparsed: position,
+            done: false,
+        };
+        for cst_item in cst_iter {
+            match cst_item {
+                CstIterItem::Parsed(n) => {
+                    trace!(
+                        "{}. [{} - {}]",
+                        self.dotted_rule_to_string(&n.dotted_rule).unwrap(),
+                        n.start,
+                        n.end
+                    );
+                }
+                CstIterItem::Unparsed(_unparsed) => (),
             }
         }
     }
