@@ -729,10 +729,11 @@ where
         }
         .filter_map(|n| match n {
             CstIterItem::Parsed(n) => {
-                if n.start != position
-                    && n.end == position
-                    && !self.dotted_symbol(&n.dotted_rule).is_complete()
-                {
+                // Filter out any rule completed rule. Any rule that has been completed before or
+                // at the position doesn't expect any input. Therefore, it is useless for selecting
+                // predictions. As the CST only links into the past, the end is at or before the
+                // requested position.
+                if !self.dotted_symbol(&n.dotted_rule).is_complete() {
                     let lhs = self.grammar.lhs(n.dotted_rule.rule as usize);
                     Some((lhs, n.start))
                 } else {
