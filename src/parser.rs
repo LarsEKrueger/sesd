@@ -703,7 +703,7 @@ where
     /// Return an empty vector if the position was invalid.
     ///
     /// Returned tuples consist of possible symbol and start position.
-    pub fn full_predictions(&self, position: usize) -> Vec<(SymbolId, usize)> {
+    pub fn full_predictions(&self, position: usize) -> Vec<(SymbolId, usize, usize)> {
         if position > self.valid_entries {
             return Vec::new();
         }
@@ -729,15 +729,20 @@ where
         }
         .filter_map(|n| match n {
             CstIterItem::Parsed(n) => {
-                // Filter out any rule completed rule. Any rule that has been completed before or
-                // at the position doesn't expect any input. Therefore, it is useless for selecting
-                // predictions. As the CST only links into the past, the end is at or before the
-                // requested position.
-                if !self.dotted_symbol(&n.dotted_rule).is_complete() {
-                    let lhs = self.grammar.lhs(n.dotted_rule.rule as usize);
-                    Some((lhs, n.start))
-                } else {
+                // Filter out any rule completed before the position. Any rule that has been
+                // completed before  the position doesn't expect any input. Therefore, it is
+                // useless for selecting predictions.
+                //
+                // Any rule that has been completed at the position might accept more input. This
+                // is for the higher level to decide.
+                //
+                // As the CST only links into the past, the end is at or before the requested
+                // position.
+                if (n.end < position) && self.dotted_symbol(&n.dotted_rule).is_complete() {
                     None
+                } else {
+                    let lhs = self.grammar.lhs(n.dotted_rule.rule as usize);
+                    Some((lhs, n.start, n.end))
                 }
             }
 
@@ -966,7 +971,7 @@ where
         for rule_index in 0..self.chart[position].len() {
             {
                 let e = &self.chart[position][rule_index];
-                trace!("{}. [{}]", self.dotted_rule_to_string(&e.0).unwrap(), e.1);
+                trace!("{}, [{}]", self.dotted_rule_to_string(&e.0).unwrap(), e.1);
             }
             stack.push((
                 CstPathNode {
@@ -988,7 +993,7 @@ where
             match cst_item {
                 CstIterItem::Parsed(n) => {
                     trace!(
-                        "{}. [{} - {}]",
+                        "{}, [{} - {}]",
                         self.dotted_rule_to_string(&n.dotted_rule).unwrap(),
                         n.start,
                         n.end
