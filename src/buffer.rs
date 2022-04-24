@@ -121,6 +121,7 @@ impl<T> Buffer<T> {
     }
 
     /// Move cursor to the end of the token list
+    #[allow(dead_code)]
     pub fn move_end(&mut self) {
         self.cursor = self.tokens.len();
     }
@@ -222,6 +223,7 @@ where
     /// This will insert the tokens.
     ///
     /// Later extensions might also overwrite, depending on settings
+    #[allow(dead_code)]
     pub fn enter_slice(&mut self, tokens: &[T]) {
         self.tokens.reserve(tokens.len());
         for t in tokens {
