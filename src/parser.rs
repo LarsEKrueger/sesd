@@ -190,7 +190,7 @@ fn add_to_state_list(state_list: &mut StateList, entry: ChartEntry) -> SymbolId 
     }
     let res = state_list.len();
     state_list.push(entry);
-    (res as SymbolId)
+    res as SymbolId
 }
 
 /// Add an entry to the CST edge list if the entry does not already exist.
