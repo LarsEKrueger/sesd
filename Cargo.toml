@@ -1,6 +1,6 @@
 [package]
 name = "sesd"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Lars Krueger <lars_e_krueger@gmx.de>"]
 edition = "2018"
 description = "Structured Editing of Stream Data"
@@ -17,5 +17,5 @@ log = "0.4.0"
 flexi_logger = "=0.10.2"
 
 [dependencies.pancurses]
-version = "0.16.1"
+version = "0.17.0"
 features=["wide"]
